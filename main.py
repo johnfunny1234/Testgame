@@ -17,11 +17,24 @@ PUNCH_RANGE = 50
 PUNCH_COOLDOWN = 350  # milliseconds
 FLASH_COOLDOWN = 6500  # milliseconds
 FLASH_RADIUS = 120
-ENEMY_SPAWN_TIME = 2400  # milliseconds
-MIN_ENEMY_SPAWN_TIME = 700
-ENEMY_HEALTH = 3
+ENEMY_SPAWN_TIME = 2200  # milliseconds
+MIN_ENEMY_SPAWN_TIME = 650
 ENEMY_DAMAGE = 1
 ENEMY_CONTACT_DISTANCE = 26
+CITY_SCROLL_SPEED = 70  # pixels per second
+
+TOILET_TYPES = [
+    {"name": "Episode 1 Starter", "episode": 1, "health": 2, "speed": 1.3, "color": (220, 220, 220)},
+    {"name": "Episode 2 Turbo", "episode": 2, "health": 2, "speed": 1.6, "color": (230, 240, 255)},
+    {"name": "Episode 3 Hopper", "episode": 3, "health": 3, "speed": 1.4, "color": (210, 230, 245)},
+    {"name": "Episode 4 Mega Bowl", "episode": 4, "health": 4, "speed": 1.5, "color": (235, 220, 220)},
+    {"name": "Episode 5 Jet Flush", "episode": 5, "health": 3, "speed": 1.9, "color": (210, 245, 235)},
+    {"name": "Episode 6 Double Deck", "episode": 6, "health": 5, "speed": 1.5, "color": (240, 230, 210)},
+    {"name": "Episode 7 Siren Seat", "episode": 7, "health": 4, "speed": 1.8, "color": (220, 215, 250)},
+    {"name": "Episode 8 Rocket Flush", "episode": 8, "health": 3, "speed": 2.1, "color": (210, 255, 230)},
+    {"name": "Episode 9 Bosslet", "episode": 9, "health": 6, "speed": 1.6, "color": (255, 230, 210)},
+    {"name": "Episode 10 Titan Rim", "episode": 10, "health": 7, "speed": 1.4, "color": (245, 235, 250)},
+]
 PLAYER_DAMAGE_COOLDOWN = 1200  # milliseconds
 
 
@@ -94,16 +107,23 @@ class CameraMan:
 @dataclass
 class SkibidiToilet:
     position: pygame.Vector2
-    health: int = ENEMY_HEALTH
-    speed: float = 1.5
+    health: int
+    speed: float
+    label: str
     wobble_phase: float = 0.0
+    wiggle_amp: float = 2.0
+    body_color: tuple[int, int, int] = (210, 210, 210)
+    _label_font: pygame.font.Font | None = None
 
     def update(self, target: pygame.Vector2, dt: int) -> None:
         direction = target - self.position
         if direction.length_squared() > 0:
             direction = direction.normalize()
             self.position += direction * self.speed
+
+        # Extra wobble and occasional vertical shimmy for variety.
         self.wobble_phase = (self.wobble_phase + dt * 0.01) % (2 * math.pi)
+        self.position.y += math.sin(self.wobble_phase * 0.6) * 0.12 * self.wiggle_amp
 
     def take_damage(self, amount: int) -> None:
         self.health -= amount
@@ -114,28 +134,50 @@ class SkibidiToilet:
     def draw(self, surface: pygame.Surface) -> None:
         base_rect = pygame.Rect(0, 0, 36, 26)
         base_rect.center = self.position
-        wobble_offset = math.sin(self.wobble_phase) * 2
+        wobble_offset = math.sin(self.wobble_phase) * self.wiggle_amp
         base_rect.y += wobble_offset
-        pygame.draw.rect(surface, (210, 210, 210), base_rect, border_radius=4)
+        pygame.draw.rect(surface, self.body_color, base_rect, border_radius=4)
         bowl_rect = pygame.Rect(0, 0, 26, 12)
         bowl_rect.midtop = base_rect.midtop
         bowl_rect.y += wobble_offset
         pygame.draw.rect(surface, (240, 240, 240), bowl_rect, border_radius=6)
         pygame.draw.circle(surface, (120, 180, 255), (base_rect.centerx, base_rect.centery + wobble_offset), 6)
 
+        # Label band
+        if SkibidiToilet._label_font is None:
+            SkibidiToilet._label_font = pygame.font.SysFont("arial", 14)
+        label_surface = SkibidiToilet._label_font.render(self.label, True, (20, 20, 40))
+        label_rect = label_surface.get_rect(center=(base_rect.centerx, base_rect.top - 8))
+        surface.blit(label_surface, label_rect)
+
 
 class CityMap:
     def __init__(self) -> None:
         self.buildings: List[pygame.Rect] = []
-        for _ in range(20):
-            w, h = random.randint(50, 140), random.randint(50, 120)
-            x = random.randint(30, SCREEN_WIDTH - w - 30)
-            y = random.randint(30, SCREEN_HEIGHT - h - 30)
+        self.street_lines: List[int] = [SCREEN_HEIGHT - 160, SCREEN_HEIGHT - 110]
+        start_x = 0
+        for _ in range(14):
+            w, h = random.randint(80, 200), random.randint(80, 180)
+            x = start_x + random.randint(30, 120)
+            start_x = x + w + random.randint(40, 120)
+            y = SCREEN_HEIGHT - h - random.randint(120, 200)
             self.buildings.append(pygame.Rect(x, y, w, h))
 
+    def update(self, dt: int) -> None:
+        dx = CITY_SCROLL_SPEED * (dt / 1000.0)
+        for building in list(self.buildings):
+            building.x -= dx
+            if building.right < -80:
+                self.buildings.remove(building)
+                w, h = random.randint(80, 200), random.randint(80, 180)
+                x = SCREEN_WIDTH + random.randint(40, 180)
+                y = SCREEN_HEIGHT - h - random.randint(120, 200)
+                self.buildings.append(pygame.Rect(x, y, w, h))
+
     def draw(self, surface: pygame.Surface) -> None:
-        surface.fill((35, 40, 48))
-        for x in range(0, SCREEN_WIDTH, CITY_GRID_SIZE):
+        surface.fill((30, 34, 42))
+        # Grid floor to hint the cameraman is moving right across the city.
+        for x in range(-CITY_GRID_SIZE, SCREEN_WIDTH + CITY_GRID_SIZE, CITY_GRID_SIZE):
             pygame.draw.line(surface, (48, 54, 63), (x, 0), (x, SCREEN_HEIGHT))
         for y in range(0, SCREEN_HEIGHT, CITY_GRID_SIZE):
             pygame.draw.line(surface, (48, 54, 63), (0, y), (SCREEN_WIDTH, y))
@@ -143,11 +185,17 @@ class CityMap:
         for building in self.buildings:
             pygame.draw.rect(surface, (58, 68, 83), building)
             window_color = random.choice([(255, 200, 40), (120, 150, 190), (70, 90, 120)])
-            for _ in range(random.randint(2, 6)):
+            for _ in range(random.randint(3, 7)):
                 size = random.randint(6, 10)
                 px = random.randint(building.left + 6, building.right - 6)
                 py = random.randint(building.top + 6, building.bottom - 6)
                 pygame.draw.rect(surface, window_color, pygame.Rect(px, py, size, size))
+
+        # Street lane markers to sell the walking-forward direction.
+        street_y = SCREEN_HEIGHT - 80
+        pygame.draw.rect(surface, (26, 28, 34), pygame.Rect(0, street_y, SCREEN_WIDTH, 90))
+        for i in range(0, SCREEN_WIDTH, 80):
+            pygame.draw.rect(surface, (255, 215, 120), pygame.Rect(i + 10, street_y + 38, 40, 6), border_radius=3)
 
 
 class Game:
@@ -176,17 +224,20 @@ class Game:
         self.game_over = False
 
     def spawn_enemy(self) -> None:
-        side = random.choice(["top", "bottom", "left", "right"])
-        if side == "top":
-            pos = pygame.Vector2(random.randint(0, SCREEN_WIDTH), -20)
-        elif side == "bottom":
-            pos = pygame.Vector2(random.randint(0, SCREEN_WIDTH), SCREEN_HEIGHT + 20)
-        elif side == "left":
-            pos = pygame.Vector2(-20, random.randint(0, SCREEN_HEIGHT))
-        else:
-            pos = pygame.Vector2(SCREEN_WIDTH + 20, random.randint(0, SCREEN_HEIGHT))
-        speed_variation = random.uniform(0.0, 0.8)
-        self.enemies.append(SkibidiToilet(pos, speed=1.4 + speed_variation))
+        toilet_pick = random.choice(TOILET_TYPES)
+        pos = pygame.Vector2(SCREEN_WIDTH + 40, random.randint(80, SCREEN_HEIGHT - 120))
+        speed_variation = random.uniform(-0.05, 0.35)
+        wiggle_amp = random.uniform(2.0, 3.5)
+        self.enemies.append(
+            SkibidiToilet(
+                position=pos,
+                health=toilet_pick["health"],
+                speed=toilet_pick["speed"] + speed_variation,
+                label=f"Ep{toilet_pick['episode']}",
+                wiggle_amp=wiggle_amp,
+                body_color=toilet_pick["color"],
+            )
+        )
 
     def punch_hitbox(self) -> pygame.Rect:
         if self.player.facing.length_squared() == 0:
@@ -202,6 +253,7 @@ class Game:
         return hitbox
 
     def update(self, dt: int) -> None:
+        self.city.update(dt)
         self.flash_active_time = max(0, self.flash_active_time - dt)
         if self.game_over:
             return
@@ -268,10 +320,11 @@ class Game:
             pygame.draw.rect(self.screen, color, pygame.Rect(12 + i * 26, 88, 20, 16), border_radius=4)
 
         instructions = [
-            "Move: WASD or Arrow Keys",
+            "Move: WASD or Arrow Keys (keep heading right)",
             "Punch: Spacebar",
             "Flash Burst: F (AoE + knockback)",
-            "Defeat skibidi toilets before they overrun the city!",
+            "Skibidi toilets spill in from the right!",
+            "Hold the walkway and push forward across the city.",
         ]
         for i, line in enumerate(instructions):
             label = self.font.render(line, True, (200, 215, 230))
