@@ -13,6 +13,7 @@ FPS = 60
 CITY_GRID_SIZE = 80
 PLAYER_SPEED = 4
 PLAYER_MAX_HEALTH = 5
+PLAYER_GROUND_Y = SCREEN_HEIGHT - 104
 PUNCH_RANGE = 50
 PUNCH_COOLDOWN = 350  # milliseconds
 FLASH_COOLDOWN = 6500  # milliseconds
@@ -22,19 +23,6 @@ MIN_ENEMY_SPAWN_TIME = 650
 ENEMY_DAMAGE = 1
 ENEMY_CONTACT_DISTANCE = 26
 CITY_SCROLL_SPEED = 70  # pixels per second
-
-TOILET_TYPES = [
-    {"name": "Episode 1 Starter", "episode": 1, "health": 2, "speed": 1.3, "color": (220, 220, 220)},
-    {"name": "Episode 2 Turbo", "episode": 2, "health": 2, "speed": 1.6, "color": (230, 240, 255)},
-    {"name": "Episode 3 Hopper", "episode": 3, "health": 3, "speed": 1.4, "color": (210, 230, 245)},
-    {"name": "Episode 4 Mega Bowl", "episode": 4, "health": 4, "speed": 1.5, "color": (235, 220, 220)},
-    {"name": "Episode 5 Jet Flush", "episode": 5, "health": 3, "speed": 1.9, "color": (210, 245, 235)},
-    {"name": "Episode 6 Double Deck", "episode": 6, "health": 5, "speed": 1.5, "color": (240, 230, 210)},
-    {"name": "Episode 7 Siren Seat", "episode": 7, "health": 4, "speed": 1.8, "color": (220, 215, 250)},
-    {"name": "Episode 8 Rocket Flush", "episode": 8, "health": 3, "speed": 2.1, "color": (210, 255, 230)},
-    {"name": "Episode 9 Bosslet", "episode": 9, "health": 6, "speed": 1.6, "color": (255, 230, 210)},
-    {"name": "Episode 10 Titan Rim", "episode": 10, "health": 7, "speed": 1.4, "color": (245, 235, 250)},
-]
 PLAYER_DAMAGE_COOLDOWN = 1200  # milliseconds
 
 
@@ -46,6 +34,8 @@ class CameraMan:
     punch_cooldown_timer: int = 0
     flash_cooldown_timer: int = 0
     damage_cooldown_timer: int = 0
+    bob_phase: float = 0.0
+    bob_amplitude: float = 2.5
 
     def handle_input(self, keys: pygame.key.ScancodeWrapper) -> None:
         movement = pygame.Vector2(0, 0)
@@ -53,17 +43,15 @@ class CameraMan:
             movement.x -= 1
         if keys[pygame.K_d] or keys[pygame.K_RIGHT]:
             movement.x += 1
-        if keys[pygame.K_w] or keys[pygame.K_UP]:
-            movement.y -= 1
-        if keys[pygame.K_s] or keys[pygame.K_DOWN]:
-            movement.y += 1
 
         if movement.length_squared() > 0:
             movement = movement.normalize() * PLAYER_SPEED
             self.position += movement
-            self.position.x = max(20, min(SCREEN_WIDTH - 20, self.position.x))
-            self.position.y = max(20, min(SCREEN_HEIGHT - 20, self.position.y))
+            self.position.x = max(26, min(SCREEN_WIDTH - 26, self.position.x))
+            self.position.y = PLAYER_GROUND_Y
             self.facing = movement.normalize()
+        else:
+            self.position.y = PLAYER_GROUND_Y
 
     def can_punch(self) -> bool:
         return self.punch_cooldown_timer <= 0
@@ -87,12 +75,14 @@ class CameraMan:
         self.punch_cooldown_timer = max(0, self.punch_cooldown_timer - dt)
         self.flash_cooldown_timer = max(0, self.flash_cooldown_timer - dt)
         self.damage_cooldown_timer = max(0, self.damage_cooldown_timer - dt)
+        self.bob_phase = (self.bob_phase + dt * 0.005) % (2 * math.pi)
 
     def draw(self, surface: pygame.Surface) -> None:
         body_color = (30, 120, 200)
         head_color = (230, 240, 255)
         base_rect = pygame.Rect(0, 0, 36, 48)
-        base_rect.center = self.position
+        bob = math.sin(self.bob_phase) * self.bob_amplitude
+        base_rect.center = (self.position.x, self.position.y + bob)
         pygame.draw.rect(surface, body_color, base_rect, border_radius=6)
 
         head_rect = pygame.Rect(0, 0, 24, 18)
@@ -109,17 +99,26 @@ class SkibidiToilet:
     position: pygame.Vector2
     health: int
     speed: float
-    label: str
+    label: str = ""
+    is_saint: bool = False
+    angry: bool = False
     wobble_phase: float = 0.0
     wiggle_amp: float = 2.0
     body_color: tuple[int, int, int] = (210, 210, 210)
+    rim_color: tuple[int, int, int] = (240, 240, 240)
+    eye_color: tuple[int, int, int] = (40, 40, 40)
     _label_font: pygame.font.Font | None = None
 
     def update(self, target: pygame.Vector2, dt: int) -> None:
         direction = target - self.position
         if direction.length_squared() > 0:
             direction = direction.normalize()
-            self.position += direction * self.speed
+            speed = self.speed
+            if self.is_saint and (self.angry or self.health <= 6):
+                speed += 0.7
+                self.angry = True
+                self.eye_color = (160, 20, 20)
+            self.position += direction * speed
 
         # Extra wobble and occasional vertical shimmy for variety.
         self.wobble_phase = (self.wobble_phase + dt * 0.01) % (2 * math.pi)
@@ -132,23 +131,57 @@ class SkibidiToilet:
         return self.health <= 0
 
     def draw(self, surface: pygame.Surface) -> None:
-        base_rect = pygame.Rect(0, 0, 36, 26)
-        base_rect.center = self.position
         wobble_offset = math.sin(self.wobble_phase) * self.wiggle_amp
-        base_rect.y += wobble_offset
-        pygame.draw.rect(surface, self.body_color, base_rect, border_radius=4)
-        bowl_rect = pygame.Rect(0, 0, 26, 12)
-        bowl_rect.midtop = base_rect.midtop
-        bowl_rect.y += wobble_offset
-        pygame.draw.rect(surface, (240, 240, 240), bowl_rect, border_radius=6)
-        pygame.draw.circle(surface, (120, 180, 255), (base_rect.centerx, base_rect.centery + wobble_offset), 6)
+        shadow_rect = pygame.Rect(0, 0, 48, 14)
+        shadow_rect.center = (int(self.position.x), int(self.position.y + wobble_offset + 24))
+        pygame.draw.ellipse(surface, (24, 24, 32), shadow_rect)
 
-        # Label band
-        if SkibidiToilet._label_font is None:
-            SkibidiToilet._label_font = pygame.font.SysFont("arial", 14)
-        label_surface = SkibidiToilet._label_font.render(self.label, True, (20, 20, 40))
-        label_rect = label_surface.get_rect(center=(base_rect.centerx, base_rect.top - 8))
-        surface.blit(label_surface, label_rect)
+        base_rect = pygame.Rect(0, 0, 44, 30)
+        base_rect.center = self.position
+        base_rect.y += wobble_offset
+        pygame.draw.rect(surface, self.body_color, base_rect, border_radius=8)
+
+        tank_rect = pygame.Rect(0, 0, 40, 16)
+        tank_rect.midbottom = base_rect.midtop
+        tank_rect.y -= 6
+        tank_rect.y += wobble_offset
+        pygame.draw.rect(surface, (220, 225, 235), tank_rect, border_radius=6)
+        pygame.draw.rect(surface, (110, 140, 170), tank_rect.inflate(-18, -8), border_radius=4, width=2)
+
+        seat_rect = pygame.Rect(0, 0, 32, 14)
+        seat_rect.midtop = base_rect.midtop
+        seat_rect.y += wobble_offset - 2
+        pygame.draw.rect(surface, self.rim_color, seat_rect, border_radius=8)
+        pygame.draw.rect(surface, (180, 180, 200), seat_rect.inflate(-10, -6), border_radius=6)
+
+        water_center = (base_rect.centerx, base_rect.centery + wobble_offset)
+        pygame.draw.circle(surface, (130, 190, 255), water_center, 8)
+        pygame.draw.circle(surface, (220, 240, 255), water_center, 4)
+
+        # Face
+        eye_y = base_rect.top + 8 + wobble_offset
+        eye_offset = 10
+        pygame.draw.circle(surface, (255, 255, 255), (base_rect.centerx - eye_offset, int(eye_y)), 5)
+        pygame.draw.circle(surface, (255, 255, 255), (base_rect.centerx + eye_offset, int(eye_y)), 5)
+        pygame.draw.circle(surface, self.eye_color, (base_rect.centerx - eye_offset, int(eye_y)), 3)
+        pygame.draw.circle(surface, self.eye_color, (base_rect.centerx + eye_offset, int(eye_y)), 3)
+        mouth_rect = pygame.Rect(0, 0, 18, 8)
+        mouth_rect.midtop = (base_rect.centerx, eye_y + 8)
+        pygame.draw.arc(surface, (180, 60, 60), mouth_rect, math.radians(10), math.radians(170), 2)
+
+        if self.is_saint:
+            halo_rect = pygame.Rect(0, 0, 40, 10)
+            halo_rect.midbottom = (tank_rect.centerx, tank_rect.top - 8)
+            halo_rect.y += math.sin(self.wobble_phase * 1.4) * 2
+            pygame.draw.ellipse(surface, (255, 225, 120), halo_rect, width=3)
+            pygame.draw.ellipse(surface, (255, 245, 200), halo_rect.inflate(-6, -4), width=2)
+
+        if self.label:
+            if SkibidiToilet._label_font is None:
+                SkibidiToilet._label_font = pygame.font.SysFont("arial", 14)
+            label_surface = SkibidiToilet._label_font.render(self.label, True, (20, 20, 40))
+            label_rect = label_surface.get_rect(center=(base_rect.centerx, base_rect.top - 12))
+            surface.blit(label_surface, label_rect)
 
 
 class CityMap:
@@ -207,37 +240,63 @@ class Game:
         self.font = pygame.font.SysFont("arial", 20)
 
         self.city = CityMap()
-        self.player = CameraMan(pygame.Vector2(SCREEN_WIDTH // 2, SCREEN_HEIGHT // 2), pygame.Vector2(0, 1))
+        self.player = CameraMan(pygame.Vector2(SCREEN_WIDTH // 2, PLAYER_GROUND_Y), pygame.Vector2(1, 0))
         self.enemies: List[SkibidiToilet] = []
         self.last_spawn = 0
         self.score = 0
         self.flash_active_time = 0
         self.game_over = False
+        self.wave = 1
+        self.wave_goal = 8
+        self.wave_kills = 0
+        self.saint_spawned = False
 
     def reset(self) -> None:
         self.city = CityMap()
-        self.player = CameraMan(pygame.Vector2(SCREEN_WIDTH // 2, SCREEN_HEIGHT // 2), pygame.Vector2(0, 1))
+        self.player = CameraMan(pygame.Vector2(SCREEN_WIDTH // 2, PLAYER_GROUND_Y), pygame.Vector2(1, 0))
         self.enemies = []
         self.last_spawn = 0
         self.score = 0
         self.flash_active_time = 0
         self.game_over = False
+        self.wave = 1
+        self.wave_goal = 8
+        self.wave_kills = 0
+        self.saint_spawned = False
 
     def spawn_enemy(self) -> None:
-        toilet_pick = random.choice(TOILET_TYPES)
-        pos = pygame.Vector2(SCREEN_WIDTH + 40, random.randint(80, SCREEN_HEIGHT - 120))
-        speed_variation = random.uniform(-0.05, 0.35)
+        base_health = 2 + max(0, self.wave - 1) * 0.2
+        base_speed = 1.2 + max(0, self.wave - 1) * 0.08
+        pos = pygame.Vector2(SCREEN_WIDTH + 40, PLAYER_GROUND_Y + random.uniform(-6, 6))
         wiggle_amp = random.uniform(2.0, 3.5)
-        self.enemies.append(
-            SkibidiToilet(
+
+        if self.wave >= 5 and not self.saint_spawned:
+            saint = SkibidiToilet(
                 position=pos,
-                health=toilet_pick["health"],
-                speed=toilet_pick["speed"] + speed_variation,
-                label=f"Ep{toilet_pick['episode']}",
-                wiggle_amp=wiggle_amp,
-                body_color=toilet_pick["color"],
+                health=14,
+                speed=1.1,
+                wiggle_amp=2.6,
+                body_color=(235, 230, 225),
+                rim_color=(245, 240, 220),
+                eye_color=(80, 20, 20),
+                is_saint=True,
+                label="Saint",
             )
+            self.enemies.append(saint)
+            self.saint_spawned = True
+            return
+
+        health_variation = random.choice([0, 0, 1])
+        speed_variation = random.uniform(-0.05, 0.25)
+        enemy = SkibidiToilet(
+            position=pos,
+            health=int(base_health + health_variation),
+            speed=base_speed + speed_variation,
+            wiggle_amp=wiggle_amp,
+            body_color=random.choice([(214, 214, 220), (222, 228, 234), (210, 216, 224)]),
+            rim_color=random.choice([(240, 240, 245), (236, 240, 242)]),
         )
+        self.enemies.append(enemy)
 
     def punch_hitbox(self) -> pygame.Rect:
         if self.player.facing.length_squared() == 0:
@@ -274,6 +333,7 @@ class Game:
                     if enemy.is_dead():
                         self.enemies.remove(enemy)
                         self.score += 1
+                        self.wave_kills += 1
 
         if keys[pygame.K_f] and self.player.can_flash():
             self.player.start_flash()
@@ -287,6 +347,7 @@ class Game:
                     if enemy.is_dead():
                         self.enemies.remove(enemy)
                         self.score += 1
+                        self.wave_kills += 1
 
         for enemy in list(self.enemies):
             enemy.update(self.player.position, dt)
@@ -296,8 +357,16 @@ class Game:
                 if away.length_squared() > 0:
                     enemy.position += away.normalize() * 16
 
+        if self.wave_kills >= self.wave_goal:
+            self.wave += 1
+            self.wave_goal = min(16, self.wave_goal + 2)
+            self.wave_kills = 0
+
         self.last_spawn += dt
-        spawn_delay = max(MIN_ENEMY_SPAWN_TIME, ENEMY_SPAWN_TIME - self.score * 35)
+        spawn_delay = max(
+            MIN_ENEMY_SPAWN_TIME,
+            (ENEMY_SPAWN_TIME - self.wave * 80) - self.score * 20,
+        )
         if self.last_spawn >= spawn_delay:
             self.spawn_enemy()
             self.last_spawn = 0
@@ -311,20 +380,22 @@ class Game:
         cd_text = self.font.render(f"Punch: {cooldown/10:.1f}s", True, (210, 210, 210))
         flash_cd = max(0, math.ceil(self.player.flash_cooldown_timer / 100))
         flash_text = self.font.render(f"Flash: {flash_cd/10:.1f}s", True, (190, 235, 255))
+        wave_text = self.font.render(f"Wave {self.wave}", True, (255, 235, 180))
         self.screen.blit(text, (12, 12))
         self.screen.blit(cd_text, (12, 36))
         self.screen.blit(flash_text, (12, 60))
+        self.screen.blit(wave_text, (12, 84))
 
         for i in range(PLAYER_MAX_HEALTH):
             color = (255, 90, 90) if i < self.player.health else (70, 60, 60)
-            pygame.draw.rect(self.screen, color, pygame.Rect(12 + i * 26, 88, 20, 16), border_radius=4)
+            pygame.draw.rect(self.screen, color, pygame.Rect(12 + i * 26, 112, 20, 16), border_radius=4)
 
         instructions = [
-            "Move: WASD or Arrow Keys (keep heading right)",
+            "Move: A/D or Arrow Keys (walk the street)",
             "Punch: Spacebar",
             "Flash Burst: F (AoE + knockback)",
-            "Skibidi toilets spill in from the right!",
-            "Hold the walkway and push forward across the city.",
+            "Toilets push in from the right—hold the ground!",
+            "Wave 5 brings the Saint Skibidi Toilet.",
         ]
         for i, line in enumerate(instructions):
             label = self.font.render(line, True, (200, 215, 230))
