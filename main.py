@@ -12,19 +12,21 @@ SCREEN_HEIGHT = 640
 FPS = 60
 CITY_GRID_SIZE = 80
 PLAYER_SPEED = 4
-FORM_MAX_HEALTH = {"cameraman": 5, "speakerman": 6, "tvman": 8}
+FORM_MAX_HEALTH = {"cameraman": 5, "speakerman": 6, "tvman": 8, "large_cameraman": 9}
 PLAYER_GROUND_Y = SCREEN_HEIGHT - 104
 PUNCH_RANGE = 60
 PUNCH_COOLDOWN = 280  # milliseconds
 PUNCH_DAMAGE_CAMERAMAN = 2
 PUNCH_DAMAGE_SPEAKERMAN = 6
-PUNCH_DAMAGE_TVMAN = 6
+PUNCH_DAMAGE_TVMAN = 7
+PUNCH_DAMAGE_LARGE = 8
 FLASH_COOLDOWN = 6500  # milliseconds
 FLASH_BEAM_LENGTH = 260
 FLASH_BEAM_WIDTH = 120
 FLASH_DAMAGE_CAMERAMAN = 2
 FLASH_DAMAGE_SPEAKERMAN = 4
-STUN_COOLDOWN = 4000  # milliseconds
+FLASH_DAMAGE_LARGE = 5
+STUN_COOLDOWN = 3600  # milliseconds
 STUN_DURATION = 1800  # milliseconds
 SOUNDWAVE_COOLDOWN = 4200  # milliseconds
 SOUNDWAVE_DAMAGE = 3
@@ -32,7 +34,8 @@ SOUNDWAVE_RANGE = 220
 SOUNDWAVE_HEIGHT = 130
 SPEAKERMAN_SCORE_COST = 12
 TVMAN_SCORE_COST = 15
-STAB_DAMAGE = 6
+LARGE_CAM_SCORE_COST = 25
+STAB_DAMAGE = 9
 STAB_COOLDOWN = 1000  # milliseconds
 STAB_RANGE = 70
 ENEMY_SPAWN_TIME = 2200  # milliseconds
@@ -122,10 +125,18 @@ class CameraMan:
         self.bob_amplitude = 3.4
         self.health = FORM_MAX_HEALTH[self.form]
 
+    def upgrade_to_large_cameraman(self) -> None:
+        self.form = "large_cameraman"
+        self.bob_amplitude = 3.6
+        self.health = FORM_MAX_HEALTH[self.form]
+
     def draw(self, surface: pygame.Surface) -> None:
         body_color = (30, 120, 200) if self.form == "cameraman" else (30, 30, 36)
+        if self.form == "large_cameraman":
+            body_color = (44, 44, 48)
         head_color = (230, 240, 255) if self.form == "cameraman" else (180, 180, 185)
-        base_rect = pygame.Rect(0, 0, 36, 48)
+        base_size = (36, 48) if self.form != "large_cameraman" else (44, 60)
+        base_rect = pygame.Rect(0, 0, *base_size)
         bob = math.sin(self.bob_phase) * self.bob_amplitude
         base_rect.center = (self.position.x, self.position.y + bob)
         pygame.draw.rect(surface, body_color, base_rect, border_radius=6)
@@ -148,6 +159,21 @@ class CameraMan:
             pygame.draw.circle(surface, (140, 140, 150), (center[0] - 6, center[1]), 4)
             pygame.draw.circle(surface, (90, 90, 100), (center[0] + 8, center[1]), 3)
             pygame.draw.rect(surface, (90, 90, 100), grill_rect.inflate(-6, -6), border_radius=2)
+        elif self.form == "large_cameraman":
+            head_rect = pygame.Rect(0, 0, 34, 24)
+            head_rect.midbottom = base_rect.midtop
+            pygame.draw.rect(surface, (38, 38, 44), head_rect, border_radius=3)
+            lens_rect = pygame.Rect(0, 0, 22, 12)
+            lens_rect.midleft = head_rect.midleft
+            pygame.draw.rect(surface, (20, 24, 28), lens_rect, border_radius=2)
+            rim_rect = lens_rect.inflate(-8, -4)
+            pygame.draw.rect(surface, (130, 180, 220), rim_rect, border_radius=2)
+            handle_rect = pygame.Rect(0, 0, 8, 20)
+            handle_rect.midright = head_rect.midright
+            pygame.draw.rect(surface, (22, 26, 30), handle_rect, border_radius=2)
+            beam_mount = pygame.Rect(0, 0, 14, 6)
+            beam_mount.midtop = head_rect.midtop
+            pygame.draw.rect(surface, (60, 60, 66), beam_mount, border_radius=2)
         else:
             tv_rect = pygame.Rect(0, 0, 34, 26)
             tv_rect.midbottom = base_rect.midtop
@@ -186,12 +212,14 @@ class SkibidiToilet:
     label: str = ""
     scale: float = 1.0
     is_saint: bool = False
+    is_medium: bool = False
     angry: bool = False
     wobble_phase: float = 0.0
     wiggle_amp: float = 2.0
     body_color: tuple[int, int, int] = (210, 210, 210)
     rim_color: tuple[int, int, int] = (240, 240, 240)
     eye_color: tuple[int, int, int] = (40, 40, 40)
+    score_value: int = 1
     stun_timer: int = 0
     _label_font: pygame.font.Font | None = None
 
@@ -267,6 +295,18 @@ class SkibidiToilet:
             halo_rect.y += math.sin(self.wobble_phase * 1.4) * 2
             pygame.draw.ellipse(surface, (255, 225, 120), halo_rect, width=3)
             pygame.draw.ellipse(surface, (255, 245, 200), halo_rect.inflate(-6, -4), width=2)
+
+        if self.is_saint:
+            bar_width = 120
+            bar_height = 12
+            bar_rect = pygame.Rect(0, 0, bar_width, bar_height)
+            bar_rect.midbottom = (base_rect.centerx, base_rect.top - 6)
+            pygame.draw.rect(surface, (40, 20, 20), bar_rect.inflate(4, 4), border_radius=4)
+            health_ratio = max(0, min(1, self.health / 14))
+            fill_rect = bar_rect.copy()
+            fill_rect.width = int(bar_width * health_ratio)
+            pygame.draw.rect(surface, (220, 120, 120), fill_rect, border_radius=3)
+            pygame.draw.rect(surface, (255, 220, 180), bar_rect, width=2, border_radius=4)
 
         if self.label:
             if SkibidiToilet._label_font is None:
@@ -366,7 +406,11 @@ class Game:
 
     def current_flash_beam_rect(self) -> pygame.Rect:
         direction = 1 if self.player.facing.x >= 0 else -1
-        length = FLASH_BEAM_LENGTH + (30 if self.player.form == "speakerman" else 0)
+        length = FLASH_BEAM_LENGTH
+        if self.player.form == "speakerman":
+            length += 30
+        if self.player.form == "large_cameraman":
+            length += 50
         start_x = self.player.position.x + (20 * direction)
         rect = pygame.Rect(0, 0, length, FLASH_BEAM_WIDTH)
         if direction < 0:
@@ -377,27 +421,30 @@ class Game:
         return rect
 
     def spawn_enemy(self) -> None:
+        if self.wave == 4:
+            if not self.saint_spawned:
+                pos = pygame.Vector2(SCREEN_WIDTH + 40, PLAYER_GROUND_Y + random.uniform(-6, 6))
+                saint = SkibidiToilet(
+                    position=pos,
+                    health=14,
+                    speed=1.1,
+                    wiggle_amp=2.6,
+                    body_color=(235, 230, 225),
+                    rim_color=(245, 240, 220),
+                    eye_color=(80, 20, 20),
+                    is_saint=True,
+                    label="Saint",
+                    scale=1.35,
+                    score_value=5,
+                )
+                self.enemies.append(saint)
+                self.saint_spawned = True
+            return
+
         base_health = 2 + max(0, self.wave - 1) * 0.2
         base_speed = 1.2 + max(0, self.wave - 1) * 0.08
         pos = pygame.Vector2(SCREEN_WIDTH + 40, PLAYER_GROUND_Y + random.uniform(-6, 6))
         wiggle_amp = random.uniform(2.0, 3.5)
-
-        if self.wave >= 5 and not self.saint_spawned:
-            saint = SkibidiToilet(
-                position=pos,
-                health=14,
-                speed=1.1,
-                wiggle_amp=2.6,
-                body_color=(235, 230, 225),
-                rim_color=(245, 240, 220),
-                eye_color=(80, 20, 20),
-                is_saint=True,
-                label="Saint",
-                scale=1.35,
-            )
-            self.enemies.append(saint)
-            self.saint_spawned = True
-            return
 
         health_variation = random.choice([0, 0, 1])
         speed_variation = random.uniform(-0.05, 0.25)
@@ -412,6 +459,8 @@ class Game:
             rim_color=random.choice([(240, 240, 245), (236, 240, 242)]),
             label=label,
             scale=1.25 if is_medium else 1.0,
+            is_medium=is_medium,
+            score_value=2 if is_medium else 1,
         )
         self.enemies.append(enemy)
 
@@ -451,6 +500,10 @@ class Game:
             self.score -= TVMAN_SCORE_COST
             self.player.upgrade_to_tvman()
 
+        if keys[pygame.K_u] and self.player.form == "tvman" and self.score >= LARGE_CAM_SCORE_COST:
+            self.score -= LARGE_CAM_SCORE_COST
+            self.player.upgrade_to_large_cameraman()
+
         if keys[pygame.K_SPACE] and self.player.can_punch():
             self.player.start_punch()
             hitbox = self.punch_hitbox()
@@ -460,6 +513,8 @@ class Game:
                         damage = PUNCH_DAMAGE_TVMAN
                     elif self.player.form == "speakerman":
                         damage = PUNCH_DAMAGE_SPEAKERMAN
+                    elif self.player.form == "large_cameraman":
+                        damage = PUNCH_DAMAGE_LARGE
                     else:
                         damage = PUNCH_DAMAGE_CAMERAMAN
                     enemy.take_damage(damage)
@@ -469,7 +524,7 @@ class Game:
                         enemy.position += offset.normalize() * knock
                     if enemy.is_dead():
                         self.enemies.remove(enemy)
-                        self.score += 1
+                        self.score += enemy.score_value
                         self.wave_kills += 1
 
         if keys[pygame.K_f] and self.player.can_flash():
@@ -485,14 +540,19 @@ class Game:
                 self.flash_active_time = 260
                 for enemy in list(self.enemies):
                     if beam_rect.collidepoint(enemy.position.x, enemy.position.y):
-                        flash_damage = FLASH_DAMAGE_SPEAKERMAN if self.player.form == "speakerman" else FLASH_DAMAGE_CAMERAMAN
+                        if self.player.form == "speakerman":
+                            flash_damage = FLASH_DAMAGE_SPEAKERMAN
+                        elif self.player.form == "large_cameraman":
+                            flash_damage = FLASH_DAMAGE_LARGE
+                        else:
+                            flash_damage = FLASH_DAMAGE_CAMERAMAN
                         enemy.take_damage(flash_damage)
                         push = (enemy.position - self.player.position)
                         if push.length_squared() > 0:
                             enemy.position += push.normalize() * 20
                         if enemy.is_dead():
                             self.enemies.remove(enemy)
-                            self.score += 1
+                            self.score += enemy.score_value
                             self.wave_kills += 1
 
         if self.player.form == "speakerman" and keys[pygame.K_x] and self.player.can_soundwave():
@@ -512,7 +572,7 @@ class Game:
                     enemy.position += push_dir * 26
                     if enemy.is_dead():
                         self.enemies.remove(enemy)
-                        self.score += 1
+                        self.score += enemy.score_value
                         self.wave_kills += 1
 
         if self.player.form == "tvman" and keys[pygame.K_x] and self.player.can_stab():
@@ -528,7 +588,7 @@ class Game:
                     enemy.stun_timer = max(enemy.stun_timer, 240)
                     if enemy.is_dead():
                         self.enemies.remove(enemy)
-                        self.score += 1
+                        self.score += enemy.score_value
                         self.wave_kills += 1
 
         for enemy in list(self.enemies):
@@ -543,15 +603,23 @@ class Game:
             self.wave += 1
             self.wave_goal = min(16, self.wave_goal + 2)
             self.wave_kills = 0
+            if self.wave == 4:
+                self.wave_goal = 1
+                self.saint_spawned = False
 
         self.last_spawn += dt
-        spawn_delay = max(
-            MIN_ENEMY_SPAWN_TIME,
-            (ENEMY_SPAWN_TIME - self.wave * 80) - self.score * 20,
-        )
-        if self.last_spawn >= spawn_delay:
-            self.spawn_enemy()
-            self.last_spawn = 0
+        if self.wave == 4:
+            if not self.enemies and not self.saint_spawned:
+                self.spawn_enemy()
+                self.last_spawn = 0
+        else:
+            spawn_delay = max(
+                MIN_ENEMY_SPAWN_TIME,
+                (ENEMY_SPAWN_TIME - self.wave * 80) - self.score * 20,
+            )
+            if self.last_spawn >= spawn_delay:
+                self.spawn_enemy()
+                self.last_spawn = 0
 
         if self.player.health <= 0:
             self.game_over = True
@@ -564,6 +632,8 @@ class Game:
             else "Speakerman"
             if self.player.form == "speakerman"
             else "TV Man"
+            if self.player.form == "tvman"
+            else "Large Cameraman"
         )
         form = self.font.render(f"Form: {form_label}", True, (190, 255, 210))
         cooldown = max(0, math.ceil(self.player.punch_cooldown_timer / 100))
@@ -600,9 +670,10 @@ class Game:
             "F: Beam flash / TV stun beam",
             f"U ({SPEAKERMAN_SCORE_COST} pts): Speakerman",
             f"U ({TVMAN_SCORE_COST} pts as Speakerman): TV Man",
+            f"U ({LARGE_CAM_SCORE_COST} pts as TV Man): Large Cam",
             "X: Soundwave / Stab",
             "Toilets come from the right",
-            "Wave 5: Saint boss",
+            "Wave 4: Saint boss (clear wave first)",
         ]
         for i, line in enumerate(instructions):
             label = self.font.render(line, True, (200, 215, 230))
