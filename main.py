@@ -12,6 +12,7 @@ SCREEN_HEIGHT = 640
 FPS = 60
 CITY_GRID_SIZE = 80
 PLAYER_SPEED = 4
+MAX_WAVE = 8
 FORM_MAX_HEALTH = {
     "cameraman": 5,
     "speakerman": 6,
@@ -54,8 +55,10 @@ ENEMY_SPAWN_TIME = 2200  # milliseconds
 MIN_ENEMY_SPAWN_TIME = 650
 ENEMY_DAMAGE = 1
 POLICE_DAMAGE = 2
+ALLY_FLASH_COOLDOWN = 2200
 ENEMY_CONTACT_DISTANCE = 26
 CITY_SCROLL_SPEED = 70  # pixels per second
+CITY_SCROLL_SPEED_CENTER = 40
 INTERMISSION_TIME = 2200  # milliseconds between waves
 PLAYER_DAMAGE_COOLDOWN = 1200  # milliseconds
 
@@ -162,7 +165,11 @@ class CameraMan:
         if self.form == "large_speakerman":
             body_color = (46, 46, 56)
         head_color = (230, 240, 255) if self.form == "cameraman" else (180, 180, 185)
-        base_size = (36, 48) if self.form not in {"large_cameraman", "large_speakerman"} else (44, 60)
+        base_size = (36, 48)
+        if self.form == "large_cameraman":
+            base_size = (50, 66)
+        elif self.form == "large_speakerman":
+            base_size = (56, 78)
         base_rect = pygame.Rect(0, 0, *base_size)
         bob = math.sin(self.bob_phase) * self.bob_amplitude
         base_rect.center = (self.position.x, self.position.y + bob)
@@ -376,30 +383,41 @@ class SkibidiToilet:
 
 
 class CityMap:
-    def __init__(self) -> None:
+    def __init__(self, mode: str = "street") -> None:
         self.buildings: List[pygame.Rect] = []
         self.street_lines: List[int] = [SCREEN_HEIGHT - 160, SCREEN_HEIGHT - 110]
+        self.mode = mode
         start_x = 0
-        for _ in range(14):
-            w, h = random.randint(80, 200), random.randint(80, 180)
+        for _ in range(16):
+            if self.mode == "center":
+                w, h = random.randint(120, 220), random.randint(180, 260)
+                y_offset = random.randint(80, 140)
+            else:
+                w, h = random.randint(80, 200), random.randint(80, 180)
+                y_offset = random.randint(120, 200)
             x = start_x + random.randint(30, 120)
             start_x = x + w + random.randint(40, 120)
-            y = SCREEN_HEIGHT - h - random.randint(120, 200)
+            y = SCREEN_HEIGHT - h - y_offset
             self.buildings.append(pygame.Rect(x, y, w, h))
 
     def update(self, dt: int) -> None:
-        dx = CITY_SCROLL_SPEED * (dt / 1000.0)
+        dx = (CITY_SCROLL_SPEED_CENTER if self.mode == "center" else CITY_SCROLL_SPEED) * (dt / 1000.0)
         for building in list(self.buildings):
             building.x -= dx
             if building.right < -80:
                 self.buildings.remove(building)
-                w, h = random.randint(80, 200), random.randint(80, 180)
+                if self.mode == "center":
+                    w, h = random.randint(120, 220), random.randint(180, 260)
+                    y_offset = random.randint(80, 140)
+                else:
+                    w, h = random.randint(80, 200), random.randint(80, 180)
+                    y_offset = random.randint(120, 200)
                 x = SCREEN_WIDTH + random.randint(40, 180)
-                y = SCREEN_HEIGHT - h - random.randint(120, 200)
+                y = SCREEN_HEIGHT - h - y_offset
                 self.buildings.append(pygame.Rect(x, y, w, h))
 
     def draw(self, surface: pygame.Surface) -> None:
-        surface.fill((30, 34, 42))
+        surface.fill((26, 30, 40) if self.mode == "center" else (30, 34, 42))
         # Grid floor to hint the cameraman is moving right across the city.
         for x in range(-CITY_GRID_SIZE, SCREEN_WIDTH + CITY_GRID_SIZE, CITY_GRID_SIZE):
             pygame.draw.line(surface, (48, 54, 63), (x, 0), (x, SCREEN_HEIGHT))
@@ -407,8 +425,13 @@ class CityMap:
             pygame.draw.line(surface, (48, 54, 63), (0, y), (SCREEN_WIDTH, y))
 
         for building in self.buildings:
-            pygame.draw.rect(surface, (58, 68, 83), building)
-            window_color = random.choice([(255, 200, 40), (120, 150, 190), (70, 90, 120)])
+            pygame.draw.rect(surface, (70, 82, 102) if self.mode == "center" else (58, 68, 83), building)
+            window_palette = (
+                [(255, 220, 120), (140, 180, 230), (90, 110, 160)]
+                if self.mode == "center"
+                else [(255, 200, 40), (120, 150, 190), (70, 90, 120)]
+            )
+            window_color = random.choice(window_palette)
             for _ in range(random.randint(3, 7)):
                 size = random.randint(6, 10)
                 px = random.randint(building.left + 6, building.right - 6)
@@ -416,10 +439,51 @@ class CityMap:
                 pygame.draw.rect(surface, window_color, pygame.Rect(px, py, size, size))
 
         # Street lane markers to sell the walking-forward direction.
-        street_y = SCREEN_HEIGHT - 80
-        pygame.draw.rect(surface, (26, 28, 34), pygame.Rect(0, street_y, SCREEN_WIDTH, 90))
-        for i in range(0, SCREEN_WIDTH, 80):
+        street_y = SCREEN_HEIGHT - (110 if self.mode == "center" else 80)
+        pygame.draw.rect(surface, (20, 22, 28) if self.mode == "center" else (26, 28, 34), pygame.Rect(0, street_y, SCREEN_WIDTH, SCREEN_HEIGHT - street_y))
+        dash_step = 60 if self.mode == "center" else 80
+        for i in range(0, SCREEN_WIDTH, dash_step):
             pygame.draw.rect(surface, (255, 215, 120), pygame.Rect(i + 10, street_y + 38, 40, 6), border_radius=3)
+
+
+@dataclass
+class Ally:
+    position: pygame.Vector2
+    health: int = FORM_MAX_HEALTH["cameraman"]
+    flash_cooldown_timer: int = 0
+
+    def update(self, dt: int, enemies: List["SkibidiToilet"]) -> None:
+        self.flash_cooldown_timer = max(0, self.flash_cooldown_timer - dt)
+        if self.flash_cooldown_timer > 0:
+            return
+        # Auto flash toward enemies ahead
+        ahead = [e for e in enemies if e.position.x > self.position.x and e.position.distance_to(self.position) < 260]
+        if ahead:
+            self.flash_cooldown_timer = ALLY_FLASH_COOLDOWN
+            for enemy in ahead:
+                enemy.take_damage(FLASH_DAMAGE_CAMERAMAN)
+                enemy.stun_timer = max(enemy.stun_timer, 320)
+
+    def draw(self, surface: pygame.Surface) -> None:
+        torso = pygame.Rect(0, 0, 36, 48)
+        torso.midbottom = (self.position.x, self.position.y)
+        pygame.draw.rect(surface, (28, 110, 200), torso, border_radius=6)
+        head = pygame.Rect(0, 0, 26, 20)
+        head.midbottom = torso.midtop
+        pygame.draw.rect(surface, (220, 230, 240), head, border_radius=3)
+        lens = pygame.Rect(0, 0, 12, 8)
+        lens.midleft = head.midleft
+        pygame.draw.rect(surface, (20, 20, 26), lens, border_radius=2)
+        bar_width = 36
+        bar_height = 8
+        bar_rect = pygame.Rect(0, 0, bar_width, bar_height)
+        bar_rect.midbottom = (torso.centerx, torso.top - 6)
+        pygame.draw.rect(surface, (40, 20, 20), bar_rect.inflate(4, 4), border_radius=3)
+        health_ratio = max(0, min(1, self.health / FORM_MAX_HEALTH["cameraman"]))
+        fill_rect = bar_rect.copy()
+        fill_rect.width = int(bar_width * health_ratio)
+        pygame.draw.rect(surface, (200, 80, 80), fill_rect, border_radius=3)
+        pygame.draw.rect(surface, (255, 220, 180), bar_rect, width=2, border_radius=3)
 
 
 class Game:
@@ -438,6 +502,7 @@ class Game:
         self.city = CityMap()
         self.player = CameraMan(pygame.Vector2(SCREEN_WIDTH // 2, PLAYER_GROUND_Y), pygame.Vector2(1, 0))
         self.enemies: List[SkibidiToilet] = []
+        self.allies: List[Ally] = []
         self.last_spawn = 0
         self.score = 0
         self.flash_active_time = 0
@@ -457,6 +522,7 @@ class Game:
         self.city = CityMap()
         self.player = CameraMan(pygame.Vector2(SCREEN_WIDTH // 2, PLAYER_GROUND_Y), pygame.Vector2(1, 0))
         self.enemies = []
+        self.allies = []
         self.last_spawn = 0
         self.score = 0
         self.flash_active_time = 0
@@ -472,6 +538,8 @@ class Game:
         self.start_wave(1)
 
     def goal_for_wave(self, wave: int) -> int:
+        if wave > MAX_WAVE:
+            return 0
         if wave == 5:
             return 1
         return min(16, 8 + (wave - 1) * 2)
@@ -485,6 +553,12 @@ class Game:
         self.last_spawn = 0
         self.pending_wave = None
         self.state = "playing"
+        if self.wave == 7:
+            self.city = CityMap(mode="center")
+            self.allies = [
+                Ally(pygame.Vector2(self.player.position.x - 90, PLAYER_GROUND_Y)),
+                Ally(pygame.Vector2(self.player.position.x + 90, PLAYER_GROUND_Y)),
+            ]
 
     def current_flash_beam_rect(self) -> pygame.Rect:
         direction = 1 if self.player.facing.x >= 0 else -1
@@ -532,22 +606,32 @@ class Game:
 
         health_variation = random.choice([0, 0, 1])
         speed_variation = random.uniform(-0.05, 0.25)
-        is_police = self.wave >= 6 and random.random() < 0.32
-        is_medium = not is_police and self.wave >= 2 and random.random() < 0.35
-        label = "Police" if is_police else ("Medium" if is_medium else "")
-        contact_damage = POLICE_DAMAGE if is_police else ENEMY_DAMAGE
+        is_large = self.wave >= 8 and random.random() < 0.38
+        is_police = (not is_large) and self.wave >= 6 and random.random() < 0.32
+        is_medium = not (is_police or is_large) and self.wave >= 2 and random.random() < 0.35
+        label = "Police" if is_police else ("Medium" if is_medium else ("Large" if is_large else ""))
+        contact_damage = 3 if is_large else (POLICE_DAMAGE if is_police else ENEMY_DAMAGE)
         enemy = SkibidiToilet(
             position=pos,
-            health=int(base_health + health_variation + (2 if is_medium else 0) + (0 if is_police else 0)),
-            speed=base_speed + speed_variation - (0.05 if is_medium else 0) - (0.02 if is_police else 0),
-            wiggle_amp=wiggle_amp + (0.4 if is_medium else 0),
-            body_color=(138, 138, 148) if is_police else random.choice([(214, 214, 220), (222, 228, 234), (210, 216, 224)]),
-            rim_color=(175, 175, 182) if is_police else random.choice([(240, 240, 245), (236, 240, 242)]),
+            health=int(
+                base_health
+                + health_variation
+                + (2 if is_medium else 0)
+                + (6 if is_large else 0)
+                + (0 if is_police else 0)
+            ),
+            speed=base_speed + speed_variation - (0.05 if is_medium else 0) - (0.02 if is_police else 0) - (0.4 if is_large else 0),
+            wiggle_amp=wiggle_amp + (0.4 if is_medium else 0) - (0.2 if is_large else 0),
+            body_color=
+                (118, 118, 128)
+                if is_police
+                else (195, 195, 205) if is_large else random.choice([(214, 214, 220), (222, 228, 234), (210, 216, 224)]),
+            rim_color=(175, 175, 182) if is_police else ((240, 240, 245) if is_large else random.choice([(240, 240, 245), (236, 240, 242)])),
             label=label,
-            scale=1.1 if is_police else (1.25 if is_medium else 1.0),
+            scale=1.1 if is_police else (1.25 if is_medium else (1.6 if is_large else 1.0)),
             is_medium=is_medium,
             is_police=is_police,
-            score_value=2 if is_medium else 1,
+            score_value=2 if is_medium else (4 if is_large else 1),
             contact_damage=contact_damage,
         )
         self.enemies.append(enemy)
@@ -596,11 +680,19 @@ class Game:
             self.score -= TVMAN_SCORE_COST
             self.player.upgrade_to_tvman()
 
-        if keys[pygame.K_u] and self.player.form == "tvman" and self.score >= LARGE_CAM_SCORE_COST:
-            self.score -= LARGE_CAM_SCORE_COST
-            self.player.upgrade_to_large_cameraman()
+        if keys[pygame.K_u] and self.player.form == "tvman":
+            if self.score >= LARGE_SPEAKER_SCORE_COST:
+                self.score -= LARGE_SPEAKER_SCORE_COST
+                self.player.upgrade_to_large_speakerman()
+            elif self.score >= LARGE_CAM_SCORE_COST:
+                self.score -= LARGE_CAM_SCORE_COST
+                self.player.upgrade_to_large_cameraman()
 
         if keys[pygame.K_i] and self.player.form == "tvman" and self.score >= LARGE_SPEAKER_SCORE_COST:
+            self.score -= LARGE_SPEAKER_SCORE_COST
+            self.player.upgrade_to_large_speakerman()
+
+        if keys[pygame.K_u] and self.player.form == "large_cameraman" and self.score >= LARGE_SPEAKER_SCORE_COST:
             self.score -= LARGE_SPEAKER_SCORE_COST
             self.player.upgrade_to_large_speakerman()
 
@@ -713,6 +805,11 @@ class Game:
                         self.score += enemy.score_value
                         self.wave_kills += 1
 
+        for ally in list(self.allies):
+            ally.update(dt, self.enemies)
+            if ally.health <= 0:
+                self.allies.remove(ally)
+
         for enemy in list(self.enemies):
             enemy.update(self.player.position, dt)
             if enemy.stun_timer <= 0 and enemy.position.distance_to(self.player.position) <= ENEMY_CONTACT_DISTANCE:
@@ -720,11 +817,21 @@ class Game:
                 away = (enemy.position - self.player.position)
                 if away.length_squared() > 0:
                     enemy.position += away.normalize() * 16
+            for ally in list(self.allies):
+                if enemy.stun_timer <= 0 and enemy.position.distance_to(ally.position) <= ENEMY_CONTACT_DISTANCE:
+                    ally.health = max(0, ally.health - enemy.contact_damage)
+                    repel = (enemy.position - ally.position)
+                    if repel.length_squared() > 0:
+                        enemy.position += repel.normalize() * 10
 
         if self.wave_kills >= self.wave_goal and not self.enemies and not self.pending_wave:
-            self.pending_wave = self.wave + 1
-            self.state = "intermission"
-            self.intermission_timer = INTERMISSION_TIME
+            if self.wave >= MAX_WAVE:
+                self.game_over = True
+                self.state = "victory"
+            else:
+                self.pending_wave = self.wave + 1
+                self.state = "intermission"
+                self.intermission_timer = INTERMISSION_TIME if self.wave < 6 else INTERMISSION_TIME + 800
 
         if self.state == "playing":
             self.last_spawn += dt
@@ -828,7 +935,9 @@ class Game:
         instructions += [
             "Clear toilets to start intermission",
             "Wave 5: Saint boss only",
-            "Wave 6+: Police toilets hit harder",
+            "Wave 6: Last street wave (Police)",
+            "Wave 7-8: Center city showdown",
+            "Wave 8: Huge Skibidi appears",
         ]
         for i, line in enumerate(instructions):
             label = self.font.render(line, True, (200, 215, 230))
@@ -853,7 +962,9 @@ class Game:
             "- Wave 5 is the Saint showdown",
             "- Start from new main menu",
             "- Wave 6 brings Police Toilets",
-            "- TV -> Large Cam (U) or Large Speakerman (I)",
+            "- Center map unlocks after wave 6",
+            "- TV: U for Large upgrades (35 > Speak)",
+            "- Allies await downtown",
         ]
         for i, line in enumerate(updates):
             label = self.font.render(line, True, (200, 215, 230))
@@ -867,6 +978,9 @@ class Game:
 
         self.city.draw(self.screen)
         self.player.draw(self.screen)
+
+        for ally in self.allies:
+            ally.draw(self.screen)
 
         for enemy in self.enemies:
             enemy.draw(self.screen)
@@ -933,13 +1047,27 @@ class Game:
             seconds = max(0, math.ceil(self.intermission_timer / 100) / 10)
             title = self.font.render("Intermission", True, (255, 230, 180))
             timer_text = self.font.render(f"Next wave in {seconds:.1f}s", True, (210, 220, 255))
-            note = self.font.render("All toilets cleared!", True, (200, 255, 200))
+            note_text = "City center ahead..." if self.wave >= 6 else "All toilets cleared!"
+            note = self.font.render(note_text, True, (200, 255, 200))
             center_x = SCREEN_WIDTH // 2
             self.screen.blit(title, title.get_rect(center=(center_x, SCREEN_HEIGHT // 2 - 20)))
             self.screen.blit(timer_text, timer_text.get_rect(center=(center_x, SCREEN_HEIGHT // 2 + 8)))
             self.screen.blit(note, note.get_rect(center=(center_x, SCREEN_HEIGHT // 2 + 36)))
 
-        if self.game_over:
+        if self.game_over and self.state == "victory":
+            overlay = pygame.Surface((SCREEN_WIDTH, SCREEN_HEIGHT), pygame.SRCALPHA)
+            overlay.fill((0, 30, 40, 180))
+            self.screen.blit(overlay, (0, 0))
+            title = self.font.render("City Secured!", True, (180, 255, 210))
+            prompt = self.font.render("Press R to restart", True, (230, 230, 230))
+            score_text = self.font.render(f"Final score: {self.score}", True, (200, 220, 255))
+            wave_text = self.font.render("Center streets are safe.", True, (200, 255, 200))
+            self.screen.blit(title, title.get_rect(center=(SCREEN_WIDTH // 2, SCREEN_HEIGHT // 2 - 30)))
+            self.screen.blit(score_text, score_text.get_rect(center=(SCREEN_WIDTH // 2, SCREEN_HEIGHT // 2)))
+            self.screen.blit(wave_text, wave_text.get_rect(center=(SCREEN_WIDTH // 2, SCREEN_HEIGHT // 2 + 26)))
+            self.screen.blit(prompt, prompt.get_rect(center=(SCREEN_WIDTH // 2, SCREEN_HEIGHT // 2 + 56)))
+
+        if self.game_over and self.state == "game_over":
             overlay = pygame.Surface((SCREEN_WIDTH, SCREEN_HEIGHT), pygame.SRCALPHA)
             overlay.fill((0, 0, 0, 150))
             self.screen.blit(overlay, (0, 0))
