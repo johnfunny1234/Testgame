@@ -20,7 +20,7 @@ pip install -r requirements.txt
 2. Controls:
    - **Move:** A/D or arrow keys (walk the street, grounded)
    - **Punch:** Spacebar (buffed damage/knockback, short cooldown)
-   - **F:** Forward **beam flash** (cameraman/speakerman/large cameraman) or **TV screen stun beam** (TV Man), or the **ultra sound blast** for **Large Speakerman**. Flash/blast damage knocks foes back, and the stun beam freezes toilets in place.
+- **F:** Forward **beam flash** (cameraman/speakerman/large cameraman) or **TV screen stun beam** (TV Man), or the **ultra sound blast** for **Large Speakerman**. Flash/blast damage knocks foes back; the Large Speakerman’s blast now radiates **360°** around you, and the stun beam freezes toilets in place.
    - **X:** Soundwave (Speakerman cone shove), **blade stab** (TV Man), or the **kicking strike** (Large Speakerman) for massive close damage.
    - **Upgrade:**
      - Press **U** when you have **12+ score** to become a **Speakerman** (harder punches, longer flash beam, faster/harder soundwave, speaker-headed suit look) — upgrading refills your health to the new form’s maximum.
@@ -40,6 +40,6 @@ pip install -r requirements.txt
 - The Saint Skibidi Toilet now appears as a solo boss in wave 5 with a visible health bar and an angrier, faster phase.
 - Medium Skibidi Toilets start appearing in wave 2 as beefier commanders; they’re larger, tougher, wobble more than the basic units, and reward **2 points** when defeated.
 - Police Skibidi Toilets roll in starting at wave 6 with siren bars and higher contact damage, so avoid letting them collide with you.
-- Wave 6 is the final wave on the opening street. After the intermission you walk into a taller **center-city** map (wave 7 onward) where two friendly Cameraman allies stand with you; they share your base stats, auto-fire flash beams to stun/damage threats, and have their own health bars.
-- Wave 8 introduces a rare **Large Skibidi Toilet**: a slow, hulking variant about the size of a Large Speakerman with big health and dangerous contact damage.
+- Wave 6 is the final wave on the opening street. After the intermission you walk into a **larger, taller center-city** map (wave 7 onward) where two friendly Cameraman allies stand with you; they share your base stats, strafe forward to **fight with punches and flashes**, and have their own health bars.
+- Wave 8 introduces a rare **Large Skibidi Toilet**: an even **bigger, bulkier** variant about the size of a Large Speakerman with big health and dangerous contact damage.
 - A main menu now appears on boot with a Start button and a quick changelog so you can hop in or review what’s new.

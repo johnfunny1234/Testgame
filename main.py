@@ -35,6 +35,7 @@ FLASH_DAMAGE_CAMERAMAN = 2
 FLASH_DAMAGE_SPEAKERMAN = 4
 FLASH_DAMAGE_LARGE = 5
 FLASH_DAMAGE_LARGE_SPEAK = 7
+ULTRA_BLAST_RADIUS = 230
 STUN_COOLDOWN = 3600  # milliseconds
 STUN_DURATION = 1800  # milliseconds
 SOUNDWAVE_COOLDOWN = 4200  # milliseconds
@@ -56,6 +57,12 @@ MIN_ENEMY_SPAWN_TIME = 650
 ENEMY_DAMAGE = 1
 POLICE_DAMAGE = 2
 ALLY_FLASH_COOLDOWN = 2200
+ALLY_SPEED = 2.4
+ALLY_PUNCH_COOLDOWN = 900
+ALLY_PUNCH_DAMAGE = 4
+ALLY_FLASH_RANGE = 260
+ALLY_PUNCH_RANGE = 82
+ALLY_STAND_DISTANCE = 120
 ENEMY_CONTACT_DISTANCE = 26
 CITY_SCROLL_SPEED = 70  # pixels per second
 CITY_SCROLL_SPEED_CENTER = 40
@@ -169,7 +176,7 @@ class CameraMan:
         if self.form == "large_cameraman":
             base_size = (50, 66)
         elif self.form == "large_speakerman":
-            base_size = (56, 78)
+            base_size = (72, 96)
         base_rect = pygame.Rect(0, 0, *base_size)
         bob = math.sin(self.bob_phase) * self.bob_amplitude
         base_rect.center = (self.position.x, self.position.y + bob)
@@ -194,18 +201,20 @@ class CameraMan:
             pygame.draw.circle(surface, (90, 90, 100), (center[0] + 8, center[1]), 3)
             pygame.draw.rect(surface, (90, 90, 100), grill_rect.inflate(-6, -6), border_radius=2)
         elif self.form == "large_speakerman":
-            speaker_rect = pygame.Rect(0, 0, 38, 26)
+            speaker_rect = pygame.Rect(0, 0, 48, 32)
             speaker_rect.midbottom = base_rect.midtop
-            pygame.draw.rect(surface, (34, 34, 42), speaker_rect, border_radius=4)
-            inner = speaker_rect.inflate(-10, -8)
-            pygame.draw.rect(surface, (90, 90, 100), inner, border_radius=3)
-            pygame.draw.circle(surface, (140, 140, 150), inner.midtop, 6)
-            pygame.draw.circle(surface, (210, 210, 220), (inner.centerx, inner.centery + 4), 10)
-            pygame.draw.circle(surface, (120, 120, 132), (inner.centerx - 12, inner.centery - 6), 6)
-            pygame.draw.circle(surface, (80, 80, 90), (inner.centerx + 12, inner.centery + 10), 5)
-            beam_mount = pygame.Rect(0, 0, 12, 6)
+            pygame.draw.rect(surface, (34, 34, 42), speaker_rect, border_radius=5)
+            inner = speaker_rect.inflate(-12, -10)
+            pygame.draw.rect(surface, (96, 96, 110), inner, border_radius=4)
+            pygame.draw.circle(surface, (220, 220, 230), inner.center, 14)
+            pygame.draw.circle(surface, (150, 150, 160), (inner.centerx - 12, inner.centery - 4), 7)
+            pygame.draw.circle(surface, (110, 110, 120), (inner.centerx + 14, inner.centery + 6), 6)
+            ridge = pygame.Rect(0, 0, speaker_rect.width + 6, 6)
+            ridge.midtop = speaker_rect.midtop
+            pygame.draw.rect(surface, (60, 60, 72), ridge, border_radius=3)
+            beam_mount = pygame.Rect(0, 0, 18, 8)
             beam_mount.midtop = speaker_rect.midtop
-            pygame.draw.rect(surface, (200, 80, 80), beam_mount, border_radius=2)
+            pygame.draw.rect(surface, (220, 90, 90), beam_mount, border_radius=3)
         elif self.form == "large_cameraman":
             head_rect = pygame.Rect(0, 0, 34, 24)
             head_rect.midbottom = base_rect.midtop
@@ -299,7 +308,7 @@ class SkibidiToilet:
 
     def draw(self, surface: pygame.Surface) -> None:
         wobble_offset = math.sin(self.wobble_phase) * self.wiggle_amp
-        shadow_rect = pygame.Rect(0, 0, int(48 * self.scale), int(14 * self.scale))
+        shadow_rect = pygame.Rect(0, 0, int(52 * self.scale), int(16 * self.scale))
         shadow_rect.center = (int(self.position.x), int(self.position.y + wobble_offset + 24))
         pygame.draw.ellipse(surface, (24, 24, 32), shadow_rect)
 
@@ -385,18 +394,21 @@ class SkibidiToilet:
 class CityMap:
     def __init__(self, mode: str = "street") -> None:
         self.buildings: List[pygame.Rect] = []
-        self.street_lines: List[int] = [SCREEN_HEIGHT - 160, SCREEN_HEIGHT - 110]
+        self.street_lines: List[int] = (
+            [SCREEN_HEIGHT - 190, SCREEN_HEIGHT - 120] if mode == "center" else [SCREEN_HEIGHT - 160, SCREEN_HEIGHT - 110]
+        )
         self.mode = mode
         start_x = 0
-        for _ in range(16):
+        building_count = 16 if self.mode == "street" else 22
+        for _ in range(building_count):
             if self.mode == "center":
-                w, h = random.randint(120, 220), random.randint(180, 260)
-                y_offset = random.randint(80, 140)
+                w, h = random.randint(180, 280), random.randint(220, 320)
+                y_offset = random.randint(60, 120)
             else:
                 w, h = random.randint(80, 200), random.randint(80, 180)
                 y_offset = random.randint(120, 200)
             x = start_x + random.randint(30, 120)
-            start_x = x + w + random.randint(40, 120)
+            start_x = x + w + random.randint(40, 140 if self.mode == "center" else 120)
             y = SCREEN_HEIGHT - h - y_offset
             self.buildings.append(pygame.Rect(x, y, w, h))
 
@@ -407,8 +419,8 @@ class CityMap:
             if building.right < -80:
                 self.buildings.remove(building)
                 if self.mode == "center":
-                    w, h = random.randint(120, 220), random.randint(180, 260)
-                    y_offset = random.randint(80, 140)
+                    w, h = random.randint(180, 280), random.randint(220, 320)
+                    y_offset = random.randint(60, 120)
                 else:
                     w, h = random.randint(80, 200), random.randint(80, 180)
                     y_offset = random.randint(120, 200)
@@ -439,7 +451,7 @@ class CityMap:
                 pygame.draw.rect(surface, window_color, pygame.Rect(px, py, size, size))
 
         # Street lane markers to sell the walking-forward direction.
-        street_y = SCREEN_HEIGHT - (110 if self.mode == "center" else 80)
+        street_y = SCREEN_HEIGHT - (140 if self.mode == "center" else 80)
         pygame.draw.rect(surface, (20, 22, 28) if self.mode == "center" else (26, 28, 34), pygame.Rect(0, street_y, SCREEN_WIDTH, SCREEN_HEIGHT - street_y))
         dash_step = 60 if self.mode == "center" else 80
         for i in range(0, SCREEN_WIDTH, dash_step):
@@ -451,33 +463,66 @@ class Ally:
     position: pygame.Vector2
     health: int = FORM_MAX_HEALTH["cameraman"]
     flash_cooldown_timer: int = 0
+    punch_cooldown_timer: int = 0
+    bob_phase: float = 0.0
 
     def update(self, dt: int, enemies: List["SkibidiToilet"]) -> None:
         self.flash_cooldown_timer = max(0, self.flash_cooldown_timer - dt)
-        if self.flash_cooldown_timer > 0:
+        self.punch_cooldown_timer = max(0, self.punch_cooldown_timer - dt)
+        self.bob_phase = (self.bob_phase + dt * 0.005) % (2 * math.pi)
+        if not enemies:
             return
-        # Auto flash toward enemies ahead
-        ahead = [e for e in enemies if e.position.x > self.position.x and e.position.distance_to(self.position) < 260]
-        if ahead:
+
+        target = min(enemies, key=lambda e: e.position.distance_to(self.position))
+        distance = target.position.distance_to(self.position)
+        direction = target.position - self.position
+
+        if distance > ALLY_STAND_DISTANCE and direction.length_squared() > 0:
+            step = direction.normalize() * ALLY_SPEED
+            self.position += step
+            self.position.x = max(26, min(SCREEN_WIDTH - 26, self.position.x))
+
+        if self.flash_cooldown_timer <= 0 and distance <= ALLY_FLASH_RANGE:
             self.flash_cooldown_timer = ALLY_FLASH_COOLDOWN
-            for enemy in ahead:
-                enemy.take_damage(FLASH_DAMAGE_CAMERAMAN)
-                enemy.stun_timer = max(enemy.stun_timer, 320)
+            for enemy in enemies:
+                if enemy.position.distance_to(self.position) <= ALLY_FLASH_RANGE:
+                    enemy.take_damage(FLASH_DAMAGE_CAMERAMAN)
+                    enemy.stun_timer = max(enemy.stun_timer, 320)
+
+        if self.punch_cooldown_timer <= 0 and distance <= ALLY_PUNCH_RANGE:
+            self.punch_cooldown_timer = ALLY_PUNCH_COOLDOWN
+            target.take_damage(ALLY_PUNCH_DAMAGE)
+            push = target.position - self.position
+            if push.length_squared() > 0:
+                target.position += push.normalize() * 14
 
     def draw(self, surface: pygame.Surface) -> None:
-        torso = pygame.Rect(0, 0, 36, 48)
-        torso.midbottom = (self.position.x, self.position.y)
-        pygame.draw.rect(surface, (28, 110, 200), torso, border_radius=6)
-        head = pygame.Rect(0, 0, 26, 20)
+        bob = math.sin(self.bob_phase) * 2.6
+        torso = pygame.Rect(0, 0, 44, 58)
+        torso.midbottom = (self.position.x, self.position.y + bob)
+        pygame.draw.rect(surface, (26, 118, 210), torso, border_radius=8)
+        jacket = torso.inflate(-12, -8)
+        pygame.draw.rect(surface, (18, 40, 80), jacket, border_radius=6, width=2)
+
+        head = pygame.Rect(0, 0, 32, 24)
         head.midbottom = torso.midtop
-        pygame.draw.rect(surface, (220, 230, 240), head, border_radius=3)
-        lens = pygame.Rect(0, 0, 12, 8)
+        pygame.draw.rect(surface, (224, 232, 246), head, border_radius=4)
+        lens = pygame.Rect(0, 0, 16, 10)
         lens.midleft = head.midleft
-        pygame.draw.rect(surface, (20, 20, 26), lens, border_radius=2)
-        bar_width = 36
+        pygame.draw.rect(surface, (30, 30, 34), lens, border_radius=3)
+        frame = lens.inflate(-6, -4)
+        pygame.draw.rect(surface, (140, 190, 240), frame, border_radius=2)
+        grip = pygame.Rect(0, 0, 10, 18)
+        grip.midright = head.midright
+        pygame.draw.rect(surface, (30, 34, 40), grip, border_radius=2)
+        visor = pygame.Rect(0, 0, 22, 6)
+        visor.midtop = head.midtop
+        pygame.draw.rect(surface, (50, 70, 120), visor, border_radius=2)
+
+        bar_width = 42
         bar_height = 8
         bar_rect = pygame.Rect(0, 0, bar_width, bar_height)
-        bar_rect.midbottom = (torso.centerx, torso.top - 6)
+        bar_rect.midbottom = (torso.centerx, torso.top - 8)
         pygame.draw.rect(surface, (40, 20, 20), bar_rect.inflate(4, 4), border_radius=3)
         health_ratio = max(0, min(1, self.health / FORM_MAX_HEALTH["cameraman"]))
         fill_rect = bar_rect.copy()
@@ -511,6 +556,7 @@ class Game:
         self.stab_active_time = 0
         self.kick_active_time = 0
         self.flash_beam_rect: pygame.Rect | None = None
+        self.flash_circle: tuple[pygame.Vector2, float] | None = None
         self.game_over = False
         self.wave = 1
         self.wave_goal = 8
@@ -531,6 +577,7 @@ class Game:
         self.stab_active_time = 0
         self.kick_active_time = 0
         self.flash_beam_rect = None
+        self.flash_circle = None
         self.game_over = False
         self.state = "playing"
         self.intermission_timer = 0
@@ -610,17 +657,17 @@ class Game:
         is_police = (not is_large) and self.wave >= 6 and random.random() < 0.32
         is_medium = not (is_police or is_large) and self.wave >= 2 and random.random() < 0.35
         label = "Police" if is_police else ("Medium" if is_medium else ("Large" if is_large else ""))
-        contact_damage = 3 if is_large else (POLICE_DAMAGE if is_police else ENEMY_DAMAGE)
+        contact_damage = 4 if is_large else (POLICE_DAMAGE if is_police else ENEMY_DAMAGE)
         enemy = SkibidiToilet(
             position=pos,
             health=int(
                 base_health
                 + health_variation
                 + (2 if is_medium else 0)
-                + (6 if is_large else 0)
+                + (10 if is_large else 0)
                 + (0 if is_police else 0)
             ),
-            speed=base_speed + speed_variation - (0.05 if is_medium else 0) - (0.02 if is_police else 0) - (0.4 if is_large else 0),
+            speed=base_speed + speed_variation - (0.05 if is_medium else 0) - (0.02 if is_police else 0) - (0.48 if is_large else 0),
             wiggle_amp=wiggle_amp + (0.4 if is_medium else 0) - (0.2 if is_large else 0),
             body_color=
                 (118, 118, 128)
@@ -628,7 +675,7 @@ class Game:
                 else (195, 195, 205) if is_large else random.choice([(214, 214, 220), (222, 228, 234), (210, 216, 224)]),
             rim_color=(175, 175, 182) if is_police else ((240, 240, 245) if is_large else random.choice([(240, 240, 245), (236, 240, 242)])),
             label=label,
-            scale=1.1 if is_police else (1.25 if is_medium else (1.6 if is_large else 1.0)),
+            scale=1.1 if is_police else (1.25 if is_medium else (2.1 if is_large else 1.0)),
             is_medium=is_medium,
             is_police=is_police,
             score_value=2 if is_medium else (4 if is_large else 1),
@@ -658,6 +705,7 @@ class Game:
         self.kick_active_time = max(0, self.kick_active_time - dt)
         if self.flash_active_time <= 0 and self.stun_active_time <= 0:
             self.flash_beam_rect = None
+            self.flash_circle = None
         self.player.update(dt)
 
         if self.state == "menu" or self.state == "game_over":
@@ -723,34 +771,48 @@ class Game:
 
         if keys[pygame.K_f] and self.player.can_flash():
             self.player.start_flash()
-            beam_rect = self.current_flash_beam_rect()
-            self.flash_beam_rect = beam_rect
-            if self.player.form == "tvman":
-                self.stun_active_time = 260
-                for enemy in list(self.enemies):
-                    if beam_rect.collidepoint(enemy.position.x, enemy.position.y):
-                        enemy.stun_timer = STUN_DURATION
-            else:
+            if self.player.form == "large_speakerman":
+                self.flash_beam_rect = None
+                self.flash_circle = (self.player.position.copy(), ULTRA_BLAST_RADIUS)
                 self.flash_active_time = 260
                 for enemy in list(self.enemies):
-                    if beam_rect.collidepoint(enemy.position.x, enemy.position.y):
-                        if self.player.form == "speakerman":
-                            flash_damage = FLASH_DAMAGE_SPEAKERMAN
-                        elif self.player.form == "large_speakerman":
-                            flash_damage = FLASH_DAMAGE_LARGE_SPEAK
-                        elif self.player.form == "large_cameraman":
-                            flash_damage = FLASH_DAMAGE_LARGE
-                        else:
-                            flash_damage = FLASH_DAMAGE_CAMERAMAN
-                        enemy.take_damage(flash_damage)
+                    if enemy.position.distance_to(self.player.position) <= ULTRA_BLAST_RADIUS:
+                        enemy.take_damage(FLASH_DAMAGE_LARGE_SPEAK)
                         push = (enemy.position - self.player.position)
                         if push.length_squared() > 0:
-                            push_strength = 28 if self.player.form == "large_speakerman" else 20
-                            enemy.position += push.normalize() * push_strength
+                            enemy.position += push.normalize() * 36
                         if enemy.is_dead():
                             self.enemies.remove(enemy)
                             self.score += enemy.score_value
                             self.wave_kills += 1
+            else:
+                beam_rect = self.current_flash_beam_rect()
+                self.flash_beam_rect = beam_rect
+                self.flash_circle = None
+                if self.player.form == "tvman":
+                    self.stun_active_time = 260
+                    for enemy in list(self.enemies):
+                        if beam_rect.collidepoint(enemy.position.x, enemy.position.y):
+                            enemy.stun_timer = STUN_DURATION
+                else:
+                    self.flash_active_time = 260
+                    for enemy in list(self.enemies):
+                        if beam_rect.collidepoint(enemy.position.x, enemy.position.y):
+                            if self.player.form == "speakerman":
+                                flash_damage = FLASH_DAMAGE_SPEAKERMAN
+                            elif self.player.form == "large_cameraman":
+                                flash_damage = FLASH_DAMAGE_LARGE
+                            else:
+                                flash_damage = FLASH_DAMAGE_CAMERAMAN
+                            enemy.take_damage(flash_damage)
+                            push = (enemy.position - self.player.position)
+                            if push.length_squared() > 0:
+                                push_strength = 20
+                                enemy.position += push.normalize() * push_strength
+                            if enemy.is_dead():
+                                self.enemies.remove(enemy)
+                                self.score += enemy.score_value
+                                self.wave_kills += 1
 
         if self.player.form == "speakerman" and keys[pygame.K_x] and self.player.can_soundwave():
             self.player.start_soundwave()
@@ -809,6 +871,12 @@ class Game:
             ally.update(dt, self.enemies)
             if ally.health <= 0:
                 self.allies.remove(ally)
+
+        for enemy in list(self.enemies):
+            if enemy.is_dead():
+                self.enemies.remove(enemy)
+                self.score += enemy.score_value
+                self.wave_kills += 1
 
         for enemy in list(self.enemies):
             enemy.update(self.player.position, dt)
@@ -928,7 +996,7 @@ class Game:
             ]
         elif self.player.form == "large_speakerman":
             instructions += [
-                "F: Ultra sound blast",
+                "F: Ultra sound blast (360°)",
                 "X: Kick strike",
             ]
 
@@ -962,9 +1030,9 @@ class Game:
             "- Wave 5 is the Saint showdown",
             "- Start from new main menu",
             "- Wave 6 brings Police Toilets",
-            "- Center map unlocks after wave 6",
+            "- Bigger center skyline after wave 6",
             "- TV: U for Large upgrades (35 > Speak)",
-            "- Allies await downtown",
+            "- Allies now fight with you",
         ]
         for i, line in enumerate(updates):
             label = self.font.render(line, True, (200, 215, 230))
@@ -988,6 +1056,17 @@ class Game:
         if punch_active:
             hitbox = self.punch_hitbox()
             pygame.draw.rect(self.screen, (255, 100, 100), hitbox, width=2)
+
+        if self.flash_circle and self.flash_active_time > 0:
+            center, radius = self.flash_circle
+            int_radius = int(radius)
+            overlay = pygame.Surface((int_radius * 2, int_radius * 2), pygame.SRCALPHA)
+            strength = self.flash_active_time / 260
+            for r in range(int_radius, 0, -16):
+                alpha = int(160 * strength * (r / int_radius))
+                pygame.draw.circle(overlay, (180, 160, 255, alpha), (int_radius, int_radius), r, width=8)
+            pygame.draw.circle(overlay, (255, 210, 140, int(140 * strength)), (int_radius, int_radius), int_radius // 3)
+            self.screen.blit(overlay, (center.x - int_radius, center.y - int_radius))
 
         if (self.flash_active_time > 0 or self.stun_active_time > 0) and self.flash_beam_rect:
             rect = self.flash_beam_rect
