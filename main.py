@@ -17,17 +17,17 @@ PLAYER_GROUND_Y = SCREEN_HEIGHT - 104
 PUNCH_RANGE = 60
 PUNCH_COOLDOWN = 280  # milliseconds
 PUNCH_DAMAGE_CAMERAMAN = 2
-PUNCH_DAMAGE_SPEAKERMAN = 5
-PUNCH_DAMAGE_TVMAN = 5
+PUNCH_DAMAGE_SPEAKERMAN = 6
+PUNCH_DAMAGE_TVMAN = 6
 FLASH_COOLDOWN = 6500  # milliseconds
 FLASH_RADIUS = 120
 FLASH_DAMAGE_CAMERAMAN = 2
-FLASH_DAMAGE_SPEAKERMAN = 3
+FLASH_DAMAGE_SPEAKERMAN = 4
 STUN_COOLDOWN = 4000  # milliseconds
 STUN_DURATION = 1800  # milliseconds
 STUN_RADIUS = 220
-SOUNDWAVE_COOLDOWN = 5200  # milliseconds
-SOUNDWAVE_DAMAGE = 2
+SOUNDWAVE_COOLDOWN = 4200  # milliseconds
+SOUNDWAVE_DAMAGE = 3
 SOUNDWAVE_RANGE = 220
 SOUNDWAVE_HEIGHT = 130
 SPEAKERMAN_SCORE_COST = 12
@@ -559,14 +559,14 @@ class Game:
             pygame.draw.rect(self.screen, color, pygame.Rect(12 + i * 26, wave_y + 28, 20, 16), border_radius=4)
 
         instructions = [
-            "Move: A/D or Arrow Keys (walk the street)",
-            "Punch: Spacebar",
-            "F: Flash burst / TV stun screen",
-            f"Upgrade: U when score >= {SPEAKERMAN_SCORE_COST} to become Speakerman",
-            f"Upgrade: U when score >= {TVMAN_SCORE_COST} as Speakerman to become TV Man",
-            "X: Soundwave (Speakerman) / Blade stab (TV Man)",
-            "Toilets push in from the right—hold the ground!",
-            "Wave 5 brings the Saint Skibidi Toilet.",
+            "Move: A/D or Arrows",
+            "Punch: Space",
+            "F: Flash / TV stun",
+            f"U ({SPEAKERMAN_SCORE_COST} pts): Speakerman",
+            f"U ({TVMAN_SCORE_COST} pts as Speakerman): TV Man",
+            "X: Soundwave / Stab",
+            "Toilets come from the right",
+            "Wave 5: Saint boss",
         ]
         for i, line in enumerate(instructions):
             label = self.font.render(line, True, (200, 215, 230))
