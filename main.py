@@ -710,12 +710,12 @@ class Game:
 
         if self.soundwave_active_time > 0:
             direction = 1 if self.player.facing.x >= 0 else -1
-            rect = pygame.Rect(
-                self.player.position.x + (16 * direction),
-                self.player.position.y - SOUNDWAVE_HEIGHT // 2,
-                SOUNDWAVE_RANGE * direction,
-                SOUNDWAVE_HEIGHT,
-            )
+            start_x = self.player.position.x + (16 * direction)
+            rect = pygame.Rect(0, 0, SOUNDWAVE_RANGE, SOUNDWAVE_HEIGHT)
+            if direction < 0:
+                rect.right = start_x
+            else:
+                rect.left = start_x
             alpha = int(180 * (self.soundwave_active_time / 240))
             overlay = pygame.Surface(rect.size, pygame.SRCALPHA)
             overlay.fill((150, 110, 255, alpha))
