@@ -43,6 +43,7 @@ MIN_ENEMY_SPAWN_TIME = 650
 ENEMY_DAMAGE = 1
 ENEMY_CONTACT_DISTANCE = 26
 CITY_SCROLL_SPEED = 70  # pixels per second
+INTERMISSION_TIME = 2200  # milliseconds between waves
 PLAYER_DAMAGE_COOLDOWN = 1200  # milliseconds
 
 
@@ -371,6 +372,11 @@ class Game:
         self.clock = pygame.time.Clock()
         self.font = pygame.font.SysFont("arial", 20)
 
+        self.state = "menu"
+        self.start_button = pygame.Rect(0, 0, 220, 72)
+        self.start_button.center = (SCREEN_WIDTH // 2, SCREEN_HEIGHT // 2 + 40)
+        self.intermission_timer = 0
+
         self.city = CityMap()
         self.player = CameraMan(pygame.Vector2(SCREEN_WIDTH // 2, PLAYER_GROUND_Y), pygame.Vector2(1, 0))
         self.enemies: List[SkibidiToilet] = []
@@ -386,6 +392,7 @@ class Game:
         self.wave_goal = 8
         self.wave_kills = 0
         self.saint_spawned = False
+        self.pending_wave: int | None = None
 
     def reset(self) -> None:
         self.city = CityMap()
@@ -399,10 +406,25 @@ class Game:
         self.stab_active_time = 0
         self.flash_beam_rect = None
         self.game_over = False
-        self.wave = 1
-        self.wave_goal = 8
+        self.state = "playing"
+        self.intermission_timer = 0
+        self.pending_wave = None
+        self.start_wave(1)
+
+    def goal_for_wave(self, wave: int) -> int:
+        if wave == 5:
+            return 1
+        return min(16, 8 + (wave - 1) * 2)
+
+    def start_wave(self, wave: int) -> None:
+        self.wave = wave
+        self.wave_goal = self.goal_for_wave(wave)
         self.wave_kills = 0
         self.saint_spawned = False
+        self.enemies = []
+        self.last_spawn = 0
+        self.pending_wave = None
+        self.state = "playing"
 
     def current_flash_beam_rect(self) -> pygame.Rect:
         direction = 1 if self.player.facing.x >= 0 else -1
@@ -485,12 +507,19 @@ class Game:
         self.stab_active_time = max(0, self.stab_active_time - dt)
         if self.flash_active_time <= 0 and self.stun_active_time <= 0:
             self.flash_beam_rect = None
-        if self.game_over:
+        self.player.update(dt)
+
+        if self.state == "menu" or self.state == "game_over":
+            return
+
+        if self.state == "intermission":
+            self.intermission_timer = max(0, self.intermission_timer - dt)
+            if self.intermission_timer <= 0 and self.pending_wave:
+                self.start_wave(self.pending_wave)
             return
 
         keys = pygame.key.get_pressed()
         self.player.handle_input(keys)
-        self.player.update(dt)
 
         if keys[pygame.K_u] and self.player.form == "cameraman" and self.score >= SPEAKERMAN_SCORE_COST:
             self.score -= SPEAKERMAN_SCORE_COST
@@ -599,30 +628,29 @@ class Game:
                 if away.length_squared() > 0:
                     enemy.position += away.normalize() * 16
 
-        if self.wave_kills >= self.wave_goal:
-            self.wave += 1
-            self.wave_goal = min(16, self.wave_goal + 2)
-            self.wave_kills = 0
-            if self.wave == 5:
-                self.wave_goal = 1
-                self.saint_spawned = False
+        if self.wave_kills >= self.wave_goal and not self.enemies and not self.pending_wave:
+            self.pending_wave = self.wave + 1
+            self.state = "intermission"
+            self.intermission_timer = INTERMISSION_TIME
 
-        self.last_spawn += dt
-        if self.wave == 5:
-            if not self.enemies and not self.saint_spawned:
-                self.spawn_enemy()
-                self.last_spawn = 0
-        else:
-            spawn_delay = max(
-                MIN_ENEMY_SPAWN_TIME,
-                (ENEMY_SPAWN_TIME - self.wave * 80) - self.score * 20,
-            )
-            if self.last_spawn >= spawn_delay:
-                self.spawn_enemy()
-                self.last_spawn = 0
+        if self.state == "playing":
+            self.last_spawn += dt
+            if self.wave == 5:
+                if not self.enemies and not self.saint_spawned:
+                    self.spawn_enemy()
+                    self.last_spawn = 0
+            elif self.wave_kills < self.wave_goal:
+                spawn_delay = max(
+                    MIN_ENEMY_SPAWN_TIME,
+                    (ENEMY_SPAWN_TIME - self.wave * 80) - self.score * 20,
+                )
+                if self.last_spawn >= spawn_delay:
+                    self.spawn_enemy()
+                    self.last_spawn = 0
 
         if self.player.health <= 0:
             self.game_over = True
+            self.state = "game_over"
 
     def draw_ui(self) -> None:
         text = self.font.render(f"Score: {self.score}", True, (255, 255, 255))
@@ -672,14 +700,42 @@ class Game:
             f"U ({TVMAN_SCORE_COST} pts as Speakerman): TV Man",
             f"U ({LARGE_CAM_SCORE_COST} pts as TV Man): Large Cam",
             "X: Soundwave / Stab",
-            "Toilets come from the right",
-            "Wave 5: Saint boss (clear wave first)",
+            "Clear waves to trigger intermission",
+            "Wave 5: Saint boss only",
         ]
         for i, line in enumerate(instructions):
             label = self.font.render(line, True, (200, 215, 230))
             self.screen.blit(label, (12, SCREEN_HEIGHT - 24 * (len(instructions) - i)))
 
+    def draw_menu(self) -> None:
+        self.city.draw(self.screen)
+        overlay = pygame.Surface((SCREEN_WIDTH, SCREEN_HEIGHT), pygame.SRCALPHA)
+        overlay.fill((0, 0, 0, 120))
+        self.screen.blit(overlay, (0, 0))
+        title = self.font.render("Skibidi City Showdown", True, (255, 235, 180))
+        subtitle = self.font.render("Press Start to defend the streets", True, (210, 220, 235))
+        pygame.draw.rect(self.screen, (40, 160, 240), self.start_button, border_radius=12)
+        start_label = self.font.render("Start", True, (255, 255, 255))
+        self.screen.blit(title, title.get_rect(center=(SCREEN_WIDTH // 2, SCREEN_HEIGHT // 2 - 70)))
+        self.screen.blit(subtitle, subtitle.get_rect(center=(SCREEN_WIDTH // 2, SCREEN_HEIGHT // 2 - 40)))
+        self.screen.blit(start_label, start_label.get_rect(center=self.start_button.center))
+
+        updates = [
+            "Updates:",
+            "- Intermissions between waves",
+            "- Wave 5 is the Saint showdown",
+            "- Start from new main menu",
+        ]
+        for i, line in enumerate(updates):
+            label = self.font.render(line, True, (200, 215, 230))
+            self.screen.blit(label, (SCREEN_WIDTH - 320, SCREEN_HEIGHT - 24 * (len(updates) - i)))
+
     def draw(self, punch_active: bool) -> None:
+        if self.state == "menu":
+            self.draw_menu()
+            pygame.display.flip()
+            return
+
         self.city.draw(self.screen)
         self.player.draw(self.screen)
 
@@ -730,6 +786,19 @@ class Game:
 
         self.draw_ui()
 
+        if self.state == "intermission":
+            overlay = pygame.Surface((SCREEN_WIDTH, SCREEN_HEIGHT), pygame.SRCALPHA)
+            overlay.fill((0, 0, 0, 130))
+            self.screen.blit(overlay, (0, 0))
+            seconds = max(0, math.ceil(self.intermission_timer / 100) / 10)
+            title = self.font.render("Intermission", True, (255, 230, 180))
+            timer_text = self.font.render(f"Next wave in {seconds:.1f}s", True, (210, 220, 255))
+            note = self.font.render("All toilets cleared!", True, (200, 255, 200))
+            center_x = SCREEN_WIDTH // 2
+            self.screen.blit(title, title.get_rect(center=(center_x, SCREEN_HEIGHT // 2 - 20)))
+            self.screen.blit(timer_text, timer_text.get_rect(center=(center_x, SCREEN_HEIGHT // 2 + 8)))
+            self.screen.blit(note, note.get_rect(center=(center_x, SCREEN_HEIGHT // 2 + 36)))
+
         if self.game_over:
             overlay = pygame.Surface((SCREEN_WIDTH, SCREEN_HEIGHT), pygame.SRCALPHA)
             overlay.fill((0, 0, 0, 150))
@@ -749,10 +818,17 @@ class Game:
             for event in pygame.event.get():
                 if event.type == pygame.QUIT:
                     running = False
+                if self.state == "menu":
+                    if event.type == pygame.MOUSEBUTTONDOWN and self.start_button.collidepoint(event.pos):
+                        self.reset()
+                    if event.type == pygame.KEYDOWN and event.key in (pygame.K_RETURN, pygame.K_SPACE):
+                        self.reset()
                 if event.type == pygame.KEYDOWN and event.key == pygame.K_r and self.game_over:
                     self.reset()
 
-            punch_active = pygame.key.get_pressed()[pygame.K_SPACE] and not self.player.can_punch()
+            punch_active = (
+                self.state == "playing" and pygame.key.get_pressed()[pygame.K_SPACE] and not self.player.can_punch()
+            )
             self.update(dt)
             self.draw(punch_active)
 
