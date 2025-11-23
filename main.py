@@ -421,7 +421,7 @@ class Game:
         return rect
 
     def spawn_enemy(self) -> None:
-        if self.wave == 4:
+        if self.wave == 5:
             if not self.saint_spawned:
                 pos = pygame.Vector2(SCREEN_WIDTH + 40, PLAYER_GROUND_Y + random.uniform(-6, 6))
                 saint = SkibidiToilet(
@@ -603,12 +603,12 @@ class Game:
             self.wave += 1
             self.wave_goal = min(16, self.wave_goal + 2)
             self.wave_kills = 0
-            if self.wave == 4:
+            if self.wave == 5:
                 self.wave_goal = 1
                 self.saint_spawned = False
 
         self.last_spawn += dt
-        if self.wave == 4:
+        if self.wave == 5:
             if not self.enemies and not self.saint_spawned:
                 self.spawn_enemy()
                 self.last_spawn = 0
@@ -673,7 +673,7 @@ class Game:
             f"U ({LARGE_CAM_SCORE_COST} pts as TV Man): Large Cam",
             "X: Soundwave / Stab",
             "Toilets come from the right",
-            "Wave 4: Saint boss (clear wave first)",
+            "Wave 5: Saint boss (clear wave first)",
         ]
         for i, line in enumerate(instructions):
             label = self.font.render(line, True, (200, 215, 230))

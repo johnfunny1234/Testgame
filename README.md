@@ -27,7 +27,7 @@ pip install -r requirements.txt
      - After you are a Speakerman, press **U** again with **15+ score** to become a **TV Man** (CRT head, hypnosis stun beam on F, high-damage blade stab on X, tougher fists) — health refills and the TV Man’s heart count climbs.
      - After reaching **TV Man**, press **U** with **25+ score** to become a **Large Cameraman** (giant cinema cam head, beefiest punch/flash damage, largest health pool) and refresh to full health.
    - **Restart:** R after defeat
-3. Earn points by defeating Skibidi Toilets before they overrun the city. Enemies enter from the right edge, scaling up by wave. Wave 4 forces you to clear remaining toilets before the Saint Skibidi Toilet boss arrives solo with his own health bar.
+3. Earn points by defeating Skibidi Toilets before they overrun the city. Enemies enter from the right edge, scaling up by wave. Wave 5 forces you to clear remaining toilets before the Saint Skibidi Toilet boss arrives solo with his own health bar.
 
 ## Notes
 - The city skyline scrolls by automatically to sell the “walking forward” feel.
@@ -36,5 +36,5 @@ pip install -r requirements.txt
 - Upgrading to Speakerman costs 12 score and boosts your fists plus your flash beam and a harder, faster soundwave blast, letting you shoulder the late-wave toilet rush. Health refills when you switch forms.
 - Upgrading to TV Man costs 15 score once you are already a Speakerman and swaps your toolkit: F becomes a hypnosis stun beam that freezes toilets (even the Saint), and X becomes a fast blade stab that downs normals in two strikes and shreds Mediums. TV Man now hits harder with punches and shows a cracked CRT overlay when on the last bar.
 - Upgrading to Large Cameraman costs 25 score after TV Man and returns you to a heavy-duty flash/punch kit with the biggest health pool and longer beam reach.
-- The Saint Skibidi Toilet now appears as a solo boss in wave 4 with a visible health bar and an angrier, faster phase.
+- The Saint Skibidi Toilet now appears as a solo boss in wave 5 with a visible health bar and an angrier, faster phase.
 - Medium Skibidi Toilets start appearing in wave 2 as beefier commanders; they’re larger, tougher, wobble more than the basic units, and reward **2 points** when defeated.
