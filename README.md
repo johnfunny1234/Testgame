@@ -21,7 +21,8 @@ pip install -r requirements.txt
    - **Move:** A/D or arrow keys (walk the street, grounded)
    - **Punch:** Spacebar (buffed damage/knockback, short cooldown)
    - **Flash Burst:** F (area knockback/damage, longer cooldown; extra punch when upgraded)
-   - **Upgrade:** Press **U** when you have **12+ score** to become a **Speakerman** (stronger punch, wider flash wave, speaker-headed suit look)
+   - **Soundwave (Speakerman):** X (cone-shaped blast that shoves and chips enemies)
+   - **Upgrade:** Press **U** when you have **12+ score** to become a **Speakerman** (punches drop toilets in roughly three hits, wider flash wave, speaker-headed suit look)
    - **Restart:** R after defeat
 3. Earn points by defeating Skibidi Toilets before they overrun the city. Enemies enter from the right edge, scaling up by wave. Wave 5 brings the Saint Skibidi Toilet boss with a halo and angrier red-eyed phase.
 
@@ -29,5 +30,6 @@ pip install -r requirements.txt
 - The city skyline scrolls by automatically to sell the “walking forward” feel.
 - The red square that appears on spacebar hold shows the active punch hitbox.
 - Dynamic difficulty ramps up enemy spawns and waves; watch your health hearts and the wave counter in the HUD.
-- Upgrading to Speakerman costs 12 score and boosts your fists plus your flash wave, letting you shoulder the late-wave toilet rush.
+- Upgrading to Speakerman costs 12 score and boosts your fists plus your flash wave and soundwave blast, letting you shoulder the late-wave toilet rush.
 - The Saint Skibidi Toilet in wave 5 lunges faster when angry and is tougher than standard toilets.
+- Medium Skibidi Toilets start appearing in wave 2 as beefier commanders; they’re larger, tougher, and wobble more than the basic units.

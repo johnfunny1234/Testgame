@@ -17,11 +17,15 @@ PLAYER_GROUND_Y = SCREEN_HEIGHT - 104
 PUNCH_RANGE = 60
 PUNCH_COOLDOWN = 280  # milliseconds
 PUNCH_DAMAGE_CAMERAMAN = 2
-PUNCH_DAMAGE_SPEAKERMAN = 3
+PUNCH_DAMAGE_SPEAKERMAN = 5
 FLASH_COOLDOWN = 6500  # milliseconds
 FLASH_RADIUS = 120
 FLASH_DAMAGE_CAMERAMAN = 2
 FLASH_DAMAGE_SPEAKERMAN = 3
+SOUNDWAVE_COOLDOWN = 5200  # milliseconds
+SOUNDWAVE_DAMAGE = 2
+SOUNDWAVE_RANGE = 220
+SOUNDWAVE_HEIGHT = 130
 SPEAKERMAN_SCORE_COST = 12
 ENEMY_SPAWN_TIME = 2200  # milliseconds
 MIN_ENEMY_SPAWN_TIME = 650
@@ -39,6 +43,7 @@ class CameraMan:
     health: int = PLAYER_MAX_HEALTH
     punch_cooldown_timer: int = 0
     flash_cooldown_timer: int = 0
+    soundwave_cooldown_timer: int = 0
     damage_cooldown_timer: int = 0
     bob_phase: float = 0.0
     bob_amplitude: float = 2.5
@@ -71,6 +76,12 @@ class CameraMan:
     def start_flash(self) -> None:
         self.flash_cooldown_timer = FLASH_COOLDOWN
 
+    def can_soundwave(self) -> bool:
+        return self.form == "speakerman" and self.soundwave_cooldown_timer <= 0
+
+    def start_soundwave(self) -> None:
+        self.soundwave_cooldown_timer = SOUNDWAVE_COOLDOWN
+
     def take_damage(self, amount: int) -> None:
         if self.damage_cooldown_timer > 0:
             return
@@ -80,6 +91,7 @@ class CameraMan:
     def update(self, dt: int) -> None:
         self.punch_cooldown_timer = max(0, self.punch_cooldown_timer - dt)
         self.flash_cooldown_timer = max(0, self.flash_cooldown_timer - dt)
+        self.soundwave_cooldown_timer = max(0, self.soundwave_cooldown_timer - dt)
         self.damage_cooldown_timer = max(0, self.damage_cooldown_timer - dt)
         self.bob_phase = (self.bob_phase + dt * 0.005) % (2 * math.pi)
 
@@ -122,6 +134,7 @@ class SkibidiToilet:
     health: int
     speed: float
     label: str = ""
+    scale: float = 1.0
     is_saint: bool = False
     angry: bool = False
     wobble_phase: float = 0.0
@@ -154,23 +167,23 @@ class SkibidiToilet:
 
     def draw(self, surface: pygame.Surface) -> None:
         wobble_offset = math.sin(self.wobble_phase) * self.wiggle_amp
-        shadow_rect = pygame.Rect(0, 0, 48, 14)
+        shadow_rect = pygame.Rect(0, 0, int(48 * self.scale), int(14 * self.scale))
         shadow_rect.center = (int(self.position.x), int(self.position.y + wobble_offset + 24))
         pygame.draw.ellipse(surface, (24, 24, 32), shadow_rect)
 
-        base_rect = pygame.Rect(0, 0, 44, 30)
+        base_rect = pygame.Rect(0, 0, int(44 * self.scale), int(30 * self.scale))
         base_rect.center = self.position
         base_rect.y += wobble_offset
         pygame.draw.rect(surface, self.body_color, base_rect, border_radius=8)
 
-        tank_rect = pygame.Rect(0, 0, 40, 16)
+        tank_rect = pygame.Rect(0, 0, int(40 * self.scale), int(16 * self.scale))
         tank_rect.midbottom = base_rect.midtop
         tank_rect.y -= 6
         tank_rect.y += wobble_offset
         pygame.draw.rect(surface, (220, 225, 235), tank_rect, border_radius=6)
         pygame.draw.rect(surface, (110, 140, 170), tank_rect.inflate(-18, -8), border_radius=4, width=2)
 
-        seat_rect = pygame.Rect(0, 0, 32, 14)
+        seat_rect = pygame.Rect(0, 0, int(32 * self.scale), int(14 * self.scale))
         seat_rect.midtop = base_rect.midtop
         seat_rect.y += wobble_offset - 2
         pygame.draw.rect(surface, self.rim_color, seat_rect, border_radius=8)
@@ -181,15 +194,17 @@ class SkibidiToilet:
         pygame.draw.circle(surface, (220, 240, 255), water_center, 4)
 
         # Face
-        eye_y = base_rect.top + 8 + wobble_offset
-        eye_offset = 10
-        pygame.draw.circle(surface, (255, 255, 255), (base_rect.centerx - eye_offset, int(eye_y)), 5)
-        pygame.draw.circle(surface, (255, 255, 255), (base_rect.centerx + eye_offset, int(eye_y)), 5)
-        pygame.draw.circle(surface, self.eye_color, (base_rect.centerx - eye_offset, int(eye_y)), 3)
-        pygame.draw.circle(surface, self.eye_color, (base_rect.centerx + eye_offset, int(eye_y)), 3)
-        mouth_rect = pygame.Rect(0, 0, 18, 8)
-        mouth_rect.midtop = (base_rect.centerx, eye_y + 8)
-        pygame.draw.arc(surface, (180, 60, 60), mouth_rect, math.radians(10), math.radians(170), 2)
+        eye_y = base_rect.top + 8 * self.scale + wobble_offset
+        eye_offset = 10 * self.scale
+        eye_radius = max(3, int(5 * self.scale))
+        pupil_radius = max(2, int(3 * self.scale))
+        pygame.draw.circle(surface, (255, 255, 255), (base_rect.centerx - eye_offset, int(eye_y)), eye_radius)
+        pygame.draw.circle(surface, (255, 255, 255), (base_rect.centerx + eye_offset, int(eye_y)), eye_radius)
+        pygame.draw.circle(surface, self.eye_color, (base_rect.centerx - eye_offset, int(eye_y)), pupil_radius)
+        pygame.draw.circle(surface, self.eye_color, (base_rect.centerx + eye_offset, int(eye_y)), pupil_radius)
+        mouth_rect = pygame.Rect(0, 0, int(18 * self.scale), int(8 * self.scale))
+        mouth_rect.midtop = (base_rect.centerx, eye_y + 8 * self.scale)
+        pygame.draw.arc(surface, (180, 60, 60), mouth_rect, math.radians(10), math.radians(170), max(2, int(2 * self.scale)))
 
         if self.is_saint:
             halo_rect = pygame.Rect(0, 0, 40, 10)
@@ -267,6 +282,7 @@ class Game:
         self.last_spawn = 0
         self.score = 0
         self.flash_active_time = 0
+        self.soundwave_active_time = 0
         self.game_over = False
         self.wave = 1
         self.wave_goal = 8
@@ -280,6 +296,7 @@ class Game:
         self.last_spawn = 0
         self.score = 0
         self.flash_active_time = 0
+        self.soundwave_active_time = 0
         self.game_over = False
         self.wave = 1
         self.wave_goal = 8
@@ -303,6 +320,7 @@ class Game:
                 eye_color=(80, 20, 20),
                 is_saint=True,
                 label="Saint",
+                scale=1.35,
             )
             self.enemies.append(saint)
             self.saint_spawned = True
@@ -310,13 +328,17 @@ class Game:
 
         health_variation = random.choice([0, 0, 1])
         speed_variation = random.uniform(-0.05, 0.25)
+        is_medium = self.wave >= 2 and random.random() < 0.35
+        label = "Medium" if is_medium else ""
         enemy = SkibidiToilet(
             position=pos,
-            health=int(base_health + health_variation),
-            speed=base_speed + speed_variation,
-            wiggle_amp=wiggle_amp,
+            health=int(base_health + health_variation + (2 if is_medium else 0)),
+            speed=base_speed + speed_variation - (0.05 if is_medium else 0),
+            wiggle_amp=wiggle_amp + (0.4 if is_medium else 0),
             body_color=random.choice([(214, 214, 220), (222, 228, 234), (210, 216, 224)]),
             rim_color=random.choice([(240, 240, 245), (236, 240, 242)]),
+            label=label,
+            scale=1.25 if is_medium else 1.0,
         )
         self.enemies.append(enemy)
 
@@ -336,6 +358,7 @@ class Game:
     def update(self, dt: int) -> None:
         self.city.update(dt)
         self.flash_active_time = max(0, self.flash_active_time - dt)
+        self.soundwave_active_time = max(0, self.soundwave_active_time - dt)
         if self.game_over:
             return
 
@@ -379,6 +402,30 @@ class Game:
                         self.score += 1
                         self.wave_kills += 1
 
+        if (
+            self.player.form == "speakerman"
+            and keys[pygame.K_x]
+            and self.player.can_soundwave()
+        ):
+            self.player.start_soundwave()
+            self.soundwave_active_time = 240
+            direction = 1 if self.player.facing.x >= 0 else -1
+            wave_rect = pygame.Rect(
+                self.player.position.x + (16 * direction),
+                self.player.position.y - SOUNDWAVE_HEIGHT // 2,
+                SOUNDWAVE_RANGE * direction,
+                SOUNDWAVE_HEIGHT,
+            )
+            for enemy in list(self.enemies):
+                if wave_rect.collidepoint(enemy.position.x, enemy.position.y):
+                    enemy.take_damage(SOUNDWAVE_DAMAGE)
+                    push_dir = pygame.Vector2(direction, 0)
+                    enemy.position += push_dir * 26
+                    if enemy.is_dead():
+                        self.enemies.remove(enemy)
+                        self.score += 1
+                        self.wave_kills += 1
+
         for enemy in list(self.enemies):
             enemy.update(self.player.position, dt)
             if enemy.position.distance_to(self.player.position) <= ENEMY_CONTACT_DISTANCE:
@@ -411,22 +458,29 @@ class Game:
         cd_text = self.font.render(f"Punch: {cooldown/10:.1f}s", True, (210, 210, 210))
         flash_cd = max(0, math.ceil(self.player.flash_cooldown_timer / 100))
         flash_text = self.font.render(f"Flash: {flash_cd/10:.1f}s", True, (190, 235, 255))
+        sound_cd = max(0, math.ceil(self.player.soundwave_cooldown_timer / 100)) if self.player.form == "speakerman" else 0
         wave_text = self.font.render(f"Wave {self.wave}", True, (255, 235, 180))
         self.screen.blit(text, (12, 12))
         self.screen.blit(form, (12, 36))
         self.screen.blit(cd_text, (12, 60))
         self.screen.blit(flash_text, (12, 84))
-        self.screen.blit(wave_text, (12, 108))
+        wave_y = 108
+        if self.player.form == "speakerman":
+            sound_label = self.font.render(f"Soundwave: {sound_cd/10:.1f}s", True, (220, 200, 255))
+            self.screen.blit(sound_label, (12, wave_y))
+            wave_y += 24
+        self.screen.blit(wave_text, (12, wave_y))
 
         for i in range(PLAYER_MAX_HEALTH):
             color = (255, 90, 90) if i < self.player.health else (70, 60, 60)
-            pygame.draw.rect(self.screen, color, pygame.Rect(12 + i * 26, 136, 20, 16), border_radius=4)
+            pygame.draw.rect(self.screen, color, pygame.Rect(12 + i * 26, wave_y + 28, 20, 16), border_radius=4)
 
         instructions = [
             "Move: A/D or Arrow Keys (walk the street)",
             "Punch: Spacebar",
             "Flash Burst: F (AoE + knockback)",
             f"Upgrade: U when score >= {SPEAKERMAN_SCORE_COST} to become Speakerman",
+            "Soundwave: X (Speakerman cone blast)",
             "Toilets push in from the right—hold the ground!",
             "Wave 5 brings the Saint Skibidi Toilet.",
         ]
@@ -450,6 +504,19 @@ class Game:
             radius = int(base_radius * (self.flash_active_time / 250))
             color = (255, 180, 90) if self.player.form == "speakerman" else (120, 200, 255)
             pygame.draw.circle(self.screen, color, self.player.position, radius, width=2)
+
+        if self.soundwave_active_time > 0:
+            direction = 1 if self.player.facing.x >= 0 else -1
+            rect = pygame.Rect(
+                self.player.position.x + (16 * direction),
+                self.player.position.y - SOUNDWAVE_HEIGHT // 2,
+                SOUNDWAVE_RANGE * direction,
+                SOUNDWAVE_HEIGHT,
+            )
+            alpha = int(180 * (self.soundwave_active_time / 240))
+            overlay = pygame.Surface(rect.size, pygame.SRCALPHA)
+            overlay.fill((150, 110, 255, alpha))
+            self.screen.blit(overlay, rect.topleft)
 
         self.draw_ui()
 
