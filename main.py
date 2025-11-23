@@ -12,7 +12,7 @@ SCREEN_HEIGHT = 640
 FPS = 60
 CITY_GRID_SIZE = 80
 PLAYER_SPEED = 4
-PLAYER_MAX_HEALTH = 5
+FORM_MAX_HEALTH = {"cameraman": 5, "speakerman": 6, "tvman": 8}
 PLAYER_GROUND_Y = SCREEN_HEIGHT - 104
 PUNCH_RANGE = 60
 PUNCH_COOLDOWN = 280  # milliseconds
@@ -20,12 +20,12 @@ PUNCH_DAMAGE_CAMERAMAN = 2
 PUNCH_DAMAGE_SPEAKERMAN = 6
 PUNCH_DAMAGE_TVMAN = 6
 FLASH_COOLDOWN = 6500  # milliseconds
-FLASH_RADIUS = 120
+FLASH_BEAM_LENGTH = 260
+FLASH_BEAM_WIDTH = 120
 FLASH_DAMAGE_CAMERAMAN = 2
 FLASH_DAMAGE_SPEAKERMAN = 4
 STUN_COOLDOWN = 4000  # milliseconds
 STUN_DURATION = 1800  # milliseconds
-STUN_RADIUS = 220
 SOUNDWAVE_COOLDOWN = 4200  # milliseconds
 SOUNDWAVE_DAMAGE = 3
 SOUNDWAVE_RANGE = 220
@@ -48,7 +48,7 @@ class CameraMan:
     position: pygame.Vector2
     facing: pygame.Vector2
     form: str = "cameraman"
-    health: int = PLAYER_MAX_HEALTH
+    health: int = FORM_MAX_HEALTH["cameraman"]
     punch_cooldown_timer: int = 0
     flash_cooldown_timer: int = 0
     soundwave_cooldown_timer: int = 0
@@ -115,10 +115,12 @@ class CameraMan:
         self.form = "speakerman"
         # small celebratory bob boost for the upgraded stance
         self.bob_amplitude = 3.2
+        self.health = FORM_MAX_HEALTH[self.form]
 
     def upgrade_to_tvman(self) -> None:
         self.form = "tvman"
         self.bob_amplitude = 3.4
+        self.health = FORM_MAX_HEALTH[self.form]
 
     def draw(self, surface: pygame.Surface) -> None:
         body_color = (30, 120, 200) if self.form == "cameraman" else (30, 30, 36)
@@ -158,6 +160,22 @@ class CameraMan:
             antena_center = (tv_rect.centerx, tv_rect.top - 6)
             pygame.draw.line(surface, (200, 200, 210), antena_center, (antena_center[0] - 6, antena_center[1] - 10), 2)
             pygame.draw.line(surface, (200, 200, 210), antena_center, (antena_center[0] + 6, antena_center[1] - 10), 2)
+            if self.health <= 1:
+                crack_overlay = pygame.Surface(screen_rect.size, pygame.SRCALPHA)
+                for x in range(0, screen_rect.width, 4):
+                    band_alpha = 80 + (x % 12) * 6
+                    color = ((80 + x * 2) % 255, (120 + x * 3) % 255, (200 + x * 5) % 255, min(180, band_alpha))
+                    pygame.draw.line(crack_overlay, color, (x, 0), (x, screen_rect.height))
+                crack_points = [
+                    (screen_rect.width * 0.15, screen_rect.height * 0.2),
+                    (screen_rect.width * 0.5, screen_rect.height * 0.35),
+                    (screen_rect.width * 0.35, screen_rect.height * 0.7),
+                    (screen_rect.width * 0.75, screen_rect.height * 0.55),
+                    (screen_rect.width * 0.6, screen_rect.height * 0.15),
+                ]
+                pygame.draw.lines(crack_overlay, (255, 255, 255, 220), False, crack_points, 2)
+                pygame.draw.circle(crack_overlay, (255, 255, 255, 200), crack_points[1], 4, width=1)
+                surface.blit(crack_overlay, screen_rect.topleft)
 
 
 @dataclass
@@ -322,6 +340,7 @@ class Game:
         self.soundwave_active_time = 0
         self.stun_active_time = 0
         self.stab_active_time = 0
+        self.flash_beam_rect: pygame.Rect | None = None
         self.game_over = False
         self.wave = 1
         self.wave_goal = 8
@@ -338,11 +357,24 @@ class Game:
         self.soundwave_active_time = 0
         self.stun_active_time = 0
         self.stab_active_time = 0
+        self.flash_beam_rect = None
         self.game_over = False
         self.wave = 1
         self.wave_goal = 8
         self.wave_kills = 0
         self.saint_spawned = False
+
+    def current_flash_beam_rect(self) -> pygame.Rect:
+        direction = 1 if self.player.facing.x >= 0 else -1
+        length = FLASH_BEAM_LENGTH + (30 if self.player.form == "speakerman" else 0)
+        start_x = self.player.position.x + (20 * direction)
+        rect = pygame.Rect(0, 0, length, FLASH_BEAM_WIDTH)
+        if direction < 0:
+            rect.right = start_x
+        else:
+            rect.left = start_x
+        rect.centery = self.player.position.y - 4
+        return rect
 
     def spawn_enemy(self) -> None:
         base_health = 2 + max(0, self.wave - 1) * 0.2
@@ -402,6 +434,8 @@ class Game:
         self.soundwave_active_time = max(0, self.soundwave_active_time - dt)
         self.stun_active_time = max(0, self.stun_active_time - dt)
         self.stab_active_time = max(0, self.stab_active_time - dt)
+        if self.flash_active_time <= 0 and self.stun_active_time <= 0:
+            self.flash_beam_rect = None
         if self.game_over:
             return
 
@@ -438,18 +472,19 @@ class Game:
                         self.score += 1
                         self.wave_kills += 1
 
-        flash_radius = FLASH_RADIUS + (24 if self.player.form == "speakerman" else 0)
         if keys[pygame.K_f] and self.player.can_flash():
             self.player.start_flash()
+            beam_rect = self.current_flash_beam_rect()
+            self.flash_beam_rect = beam_rect
             if self.player.form == "tvman":
                 self.stun_active_time = 260
                 for enemy in list(self.enemies):
-                    if enemy.position.distance_to(self.player.position) <= STUN_RADIUS:
+                    if beam_rect.collidepoint(enemy.position.x, enemy.position.y):
                         enemy.stun_timer = STUN_DURATION
             else:
-                self.flash_active_time = 250
+                self.flash_active_time = 260
                 for enemy in list(self.enemies):
-                    if enemy.position.distance_to(self.player.position) <= flash_radius:
+                    if beam_rect.collidepoint(enemy.position.x, enemy.position.y):
                         flash_damage = FLASH_DAMAGE_SPEAKERMAN if self.player.form == "speakerman" else FLASH_DAMAGE_CAMERAMAN
                         enemy.take_damage(flash_damage)
                         push = (enemy.position - self.player.position)
@@ -554,14 +589,15 @@ class Game:
             wave_y += 24
         self.screen.blit(wave_text, (12, wave_y))
 
-        for i in range(PLAYER_MAX_HEALTH):
+        max_health = FORM_MAX_HEALTH[self.player.form]
+        for i in range(max_health):
             color = (255, 90, 90) if i < self.player.health else (70, 60, 60)
             pygame.draw.rect(self.screen, color, pygame.Rect(12 + i * 26, wave_y + 28, 20, 16), border_radius=4)
 
         instructions = [
             "Move: A/D or Arrows",
             "Punch: Space",
-            "F: Flash / TV stun",
+            "F: Beam flash / TV stun beam",
             f"U ({SPEAKERMAN_SCORE_COST} pts): Speakerman",
             f"U ({TVMAN_SCORE_COST} pts as Speakerman): TV Man",
             "X: Soundwave / Stab",
@@ -583,17 +619,23 @@ class Game:
             hitbox = self.punch_hitbox()
             pygame.draw.rect(self.screen, (255, 100, 100), hitbox, width=2)
 
-        if self.flash_active_time > 0:
-            base_radius = FLASH_RADIUS + (24 if self.player.form == "speakerman" else 0)
-            radius = int(base_radius * (self.flash_active_time / 250))
-            color = (255, 180, 90) if self.player.form == "speakerman" else (120, 200, 255)
-            pygame.draw.circle(self.screen, color, self.player.position, radius, width=2)
-
-        if self.stun_active_time > 0:
-            radius = int(STUN_RADIUS * (self.stun_active_time / 260))
-            overlay = pygame.Surface((radius * 2, radius * 2), pygame.SRCALPHA)
-            pygame.draw.circle(overlay, (160, 120, 255, 110), (radius, radius), radius, width=3)
-            self.screen.blit(overlay, (self.player.position.x - radius, self.player.position.y - radius))
+        if (self.flash_active_time > 0 or self.stun_active_time > 0) and self.flash_beam_rect:
+            rect = self.flash_beam_rect
+            active_time = self.flash_active_time if self.flash_active_time > 0 else self.stun_active_time
+            intensity = active_time / 260
+            overlay = pygame.Surface(rect.size, pygame.SRCALPHA)
+            primary_color = (255, 200, 120) if self.player.form != "tvman" else (150, 130, 255)
+            fringe_color = (80, 170, 255) if self.player.form != "tvman" else (220, 180, 255)
+            for i in range(rect.width):
+                t = i / rect.width
+                alpha = int(180 * intensity * (1 - t * 0.65))
+                edge_alpha = int(alpha * 0.6)
+                pygame.draw.line(overlay, (*primary_color, alpha), (i, 0), (i, rect.height))
+                if i % 16 == 0:
+                    pygame.draw.line(overlay, (*fringe_color, edge_alpha), (i, 0), (i, rect.height))
+            mid_x = rect.width // 3 if self.player.facing.x < 0 else rect.width // 3 * 2
+            pygame.draw.line(overlay, (*fringe_color, int(220 * intensity)), (mid_x, 0), (mid_x, rect.height), 3)
+            self.screen.blit(overlay, rect.topleft)
 
         if self.soundwave_active_time > 0:
             direction = 1 if self.player.facing.x >= 0 else -1
