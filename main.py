@@ -14,10 +14,15 @@ CITY_GRID_SIZE = 80
 PLAYER_SPEED = 4
 PLAYER_MAX_HEALTH = 5
 PLAYER_GROUND_Y = SCREEN_HEIGHT - 104
-PUNCH_RANGE = 50
-PUNCH_COOLDOWN = 350  # milliseconds
+PUNCH_RANGE = 60
+PUNCH_COOLDOWN = 280  # milliseconds
+PUNCH_DAMAGE_CAMERAMAN = 2
+PUNCH_DAMAGE_SPEAKERMAN = 3
 FLASH_COOLDOWN = 6500  # milliseconds
 FLASH_RADIUS = 120
+FLASH_DAMAGE_CAMERAMAN = 2
+FLASH_DAMAGE_SPEAKERMAN = 3
+SPEAKERMAN_SCORE_COST = 12
 ENEMY_SPAWN_TIME = 2200  # milliseconds
 MIN_ENEMY_SPAWN_TIME = 650
 ENEMY_DAMAGE = 1
@@ -30,6 +35,7 @@ PLAYER_DAMAGE_COOLDOWN = 1200  # milliseconds
 class CameraMan:
     position: pygame.Vector2
     facing: pygame.Vector2
+    form: str = "cameraman"
     health: int = PLAYER_MAX_HEALTH
     punch_cooldown_timer: int = 0
     flash_cooldown_timer: int = 0
@@ -77,21 +83,37 @@ class CameraMan:
         self.damage_cooldown_timer = max(0, self.damage_cooldown_timer - dt)
         self.bob_phase = (self.bob_phase + dt * 0.005) % (2 * math.pi)
 
+    def upgrade_to_speakerman(self) -> None:
+        self.form = "speakerman"
+        # small celebratory bob boost for the upgraded stance
+        self.bob_amplitude = 3.2
+
     def draw(self, surface: pygame.Surface) -> None:
-        body_color = (30, 120, 200)
-        head_color = (230, 240, 255)
+        body_color = (30, 120, 200) if self.form == "cameraman" else (30, 30, 36)
+        head_color = (230, 240, 255) if self.form == "cameraman" else (180, 180, 185)
         base_rect = pygame.Rect(0, 0, 36, 48)
         bob = math.sin(self.bob_phase) * self.bob_amplitude
         base_rect.center = (self.position.x, self.position.y + bob)
         pygame.draw.rect(surface, body_color, base_rect, border_radius=6)
 
-        head_rect = pygame.Rect(0, 0, 24, 18)
-        head_rect.midbottom = base_rect.midtop
-        pygame.draw.rect(surface, head_color, head_rect, border_radius=4)
+        if self.form == "cameraman":
+            head_rect = pygame.Rect(0, 0, 24, 18)
+            head_rect.midbottom = base_rect.midtop
+            pygame.draw.rect(surface, head_color, head_rect, border_radius=4)
 
-        # Camera lens
-        lens_center = (int(head_rect.centerx + self.facing.x * 6), int(head_rect.centery + self.facing.y * 6))
-        pygame.draw.circle(surface, (20, 20, 20), lens_center, 4)
+            # Camera lens
+            lens_center = (int(head_rect.centerx + self.facing.x * 6), int(head_rect.centery + self.facing.y * 6))
+            pygame.draw.circle(surface, (20, 20, 20), lens_center, 4)
+        else:
+            speaker_rect = pygame.Rect(0, 0, 30, 20)
+            speaker_rect.midbottom = base_rect.midtop
+            pygame.draw.rect(surface, head_color, speaker_rect, border_radius=3)
+            grill_rect = speaker_rect.inflate(-10, -8)
+            pygame.draw.rect(surface, (40, 40, 44), grill_rect, border_radius=2, width=2)
+            center = speaker_rect.center
+            pygame.draw.circle(surface, (140, 140, 150), (center[0] - 6, center[1]), 4)
+            pygame.draw.circle(surface, (90, 90, 100), (center[0] + 8, center[1]), 3)
+            pygame.draw.rect(surface, (90, 90, 100), grill_rect.inflate(-6, -6), border_radius=2)
 
 
 @dataclass
@@ -321,26 +343,34 @@ class Game:
         self.player.handle_input(keys)
         self.player.update(dt)
 
+        if keys[pygame.K_u] and self.player.form == "cameraman" and self.score >= SPEAKERMAN_SCORE_COST:
+            self.score -= SPEAKERMAN_SCORE_COST
+            self.player.upgrade_to_speakerman()
+
         if keys[pygame.K_SPACE] and self.player.can_punch():
             self.player.start_punch()
             hitbox = self.punch_hitbox()
             for enemy in list(self.enemies):
                 if hitbox.collidepoint(enemy.position):
-                    enemy.take_damage(1)
+                    damage = PUNCH_DAMAGE_SPEAKERMAN if self.player.form == "speakerman" else PUNCH_DAMAGE_CAMERAMAN
+                    enemy.take_damage(damage)
                     offset = (enemy.position - self.player.position)
                     if offset.length_squared() > 0:
-                        enemy.position += offset.normalize() * 12
+                        knock = 16 if self.player.form == "speakerman" else 12
+                        enemy.position += offset.normalize() * knock
                     if enemy.is_dead():
                         self.enemies.remove(enemy)
                         self.score += 1
                         self.wave_kills += 1
 
+        flash_radius = FLASH_RADIUS + (24 if self.player.form == "speakerman" else 0)
         if keys[pygame.K_f] and self.player.can_flash():
             self.player.start_flash()
             self.flash_active_time = 250
             for enemy in list(self.enemies):
-                if enemy.position.distance_to(self.player.position) <= FLASH_RADIUS:
-                    enemy.take_damage(2)
+                if enemy.position.distance_to(self.player.position) <= flash_radius:
+                    flash_damage = FLASH_DAMAGE_SPEAKERMAN if self.player.form == "speakerman" else FLASH_DAMAGE_CAMERAMAN
+                    enemy.take_damage(flash_damage)
                     push = (enemy.position - self.player.position)
                     if push.length_squared() > 0:
                         enemy.position += push.normalize() * 20
@@ -376,24 +406,27 @@ class Game:
 
     def draw_ui(self) -> None:
         text = self.font.render(f"Score: {self.score}", True, (255, 255, 255))
+        form = self.font.render(f"Form: {'Speakerman' if self.player.form == 'speakerman' else 'Cameraman'}", True, (190, 255, 210))
         cooldown = max(0, math.ceil(self.player.punch_cooldown_timer / 100))
         cd_text = self.font.render(f"Punch: {cooldown/10:.1f}s", True, (210, 210, 210))
         flash_cd = max(0, math.ceil(self.player.flash_cooldown_timer / 100))
         flash_text = self.font.render(f"Flash: {flash_cd/10:.1f}s", True, (190, 235, 255))
         wave_text = self.font.render(f"Wave {self.wave}", True, (255, 235, 180))
         self.screen.blit(text, (12, 12))
-        self.screen.blit(cd_text, (12, 36))
-        self.screen.blit(flash_text, (12, 60))
-        self.screen.blit(wave_text, (12, 84))
+        self.screen.blit(form, (12, 36))
+        self.screen.blit(cd_text, (12, 60))
+        self.screen.blit(flash_text, (12, 84))
+        self.screen.blit(wave_text, (12, 108))
 
         for i in range(PLAYER_MAX_HEALTH):
             color = (255, 90, 90) if i < self.player.health else (70, 60, 60)
-            pygame.draw.rect(self.screen, color, pygame.Rect(12 + i * 26, 112, 20, 16), border_radius=4)
+            pygame.draw.rect(self.screen, color, pygame.Rect(12 + i * 26, 136, 20, 16), border_radius=4)
 
         instructions = [
             "Move: A/D or Arrow Keys (walk the street)",
             "Punch: Spacebar",
             "Flash Burst: F (AoE + knockback)",
+            f"Upgrade: U when score >= {SPEAKERMAN_SCORE_COST} to become Speakerman",
             "Toilets push in from the right—hold the ground!",
             "Wave 5 brings the Saint Skibidi Toilet.",
         ]
@@ -413,8 +446,10 @@ class Game:
             pygame.draw.rect(self.screen, (255, 100, 100), hitbox, width=2)
 
         if self.flash_active_time > 0:
-            radius = int(FLASH_RADIUS * (self.flash_active_time / 250))
-            pygame.draw.circle(self.screen, (120, 200, 255), self.player.position, radius, width=2)
+            base_radius = FLASH_RADIUS + (24 if self.player.form == "speakerman" else 0)
+            radius = int(base_radius * (self.flash_active_time / 250))
+            color = (255, 180, 90) if self.player.form == "speakerman" else (120, 200, 255)
+            pygame.draw.circle(self.screen, color, self.player.position, radius, width=2)
 
         self.draw_ui()
 
