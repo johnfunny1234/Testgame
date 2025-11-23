@@ -20,9 +20,11 @@ pip install -r requirements.txt
 2. Controls:
    - **Move:** A/D or arrow keys (walk the street, grounded)
    - **Punch:** Spacebar (buffed damage/knockback, short cooldown)
-   - **Flash Burst:** F (area knockback/damage, longer cooldown; extra punch when upgraded)
-   - **Soundwave (Speakerman):** X (cone-shaped blast that shoves and chips enemies)
-   - **Upgrade:** Press **U** when you have **12+ score** to become a **Speakerman** (punches drop toilets in roughly three hits, wider flash wave, speaker-headed suit look)
+   - **F:** Flash burst (cameraman/speakerman) or **TV screen stun** (TV Man) with a short cooldown that freezes toilets in place
+   - **X:** Soundwave (Speakerman cone shove) or **blade stab** (TV Man) that chunks foes in two hits
+   - **Upgrade:**
+     - Press **U** when you have **12+ score** to become a **Speakerman** (harder punches, wider flash wave, speaker-headed suit look)
+     - After you are a Speakerman, press **U** again with **15+ score** to become a **TV Man** (CRT head, hypnosis stun screen on F, high-damage blade stab on X)
    - **Restart:** R after defeat
 3. Earn points by defeating Skibidi Toilets before they overrun the city. Enemies enter from the right edge, scaling up by wave. Wave 5 brings the Saint Skibidi Toilet boss with a halo and angrier red-eyed phase.
 
@@ -31,5 +33,6 @@ pip install -r requirements.txt
 - The red square that appears on spacebar hold shows the active punch hitbox.
 - Dynamic difficulty ramps up enemy spawns and waves; watch your health hearts and the wave counter in the HUD.
 - Upgrading to Speakerman costs 12 score and boosts your fists plus your flash wave and soundwave blast, letting you shoulder the late-wave toilet rush.
+- Upgrading to TV Man costs 15 score once you are already a Speakerman and swaps your toolkit: F becomes a wide hypnosis screen that stuns toilets (even the Saint), and X becomes a fast blade stab that downs normals in two strikes and shreds Mediums.
 - The Saint Skibidi Toilet in wave 5 lunges faster when angry and is tougher than standard toilets.
 - Medium Skibidi Toilets start appearing in wave 2 as beefier commanders; they’re larger, tougher, and wobble more than the basic units.
